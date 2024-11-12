@@ -24,13 +24,10 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 | -cudeDevices | -cd | Integer index of the GPU to use for the Lattice Microbes RDME solver. |
 | -dnaSoftwareDirectory | -dsd | Directory containing the ```btree_chromo/``` and ```sc_chain_generation/``` directories. |
 | -dnaRngSeed | -drs | Integer RNG seed that will be used for the chromosome programs. |
-|----------|-----------|-------------|
 
 Example executable:
 
-```
-python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /home/zane/Software/
-```
+```python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /home/zane/Software/```
 
 ## Descriptions of Simulation Files
 
