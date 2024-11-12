@@ -18,7 +18,7 @@ The model here is runnbale as-is and does not reuire its own installation. Once 
 conda activate envName
 ```
 
-Then, you must make sure that you LAMMPS installation for ```btree_chromo``` is in your path. You can check this by running:
+Then, you must make sure that your LAMMPS installation for ```btree_chromo``` is in your path. You can check this by running:
 
 ```
 lammps -h
@@ -26,7 +26,7 @@ lammps -h
 
 Once your environment is ready, you can now run the model.
 
-```Whole_Cell_Minimal_Cell.py``` is the main executable file for the model. The executable has the following user input variables:
+The python file ```Whole_Cell_Minimal_Cell.py``` is the main executable for the model. The executable has the following user input variables:
 
 | Variable | Shorthand | Description |
 |----------|-----------|-------------|
@@ -39,7 +39,7 @@ Once your environment is ready, you can now run the model.
 Example executable:
 
 ```
-python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /home/zane/Software/
+python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 1 -drs 13 -dsd /home/zane/Software/
 ```
 
 ## Descriptions of Simulation Files
@@ -49,9 +49,11 @@ python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /hom
 |```input_data/``` | Directory containing initial conditions, kinetic parameters, and other data used to initialize the whole-cell model. |
 | ``` Communicate.py ``` | Procedures used to communicate counts of molecules between different methodologies. For example, extraction of enzyme counts from RDME to use in rates of ODE reactions. |
 | ``` Diffusion.py ``` | Sets the diffudion rules for all molecules that are put into the RDME lattice. |
+| ``` Division.py ``` | Updates cell morphology and particle positions on the RDME lattice during cell division. |
 | ``` FileSaving.py ``` | Records the cell state and generates restart files. |
 | ```FreeDTS_functions.py``` | Defines set of functions used to interpret output files of membrane shapes from FreeDTS. |
 | ``` GIP_rates.py ``` | Contains functions for rate equations of genetic information processing reactions. |
+| ``` Growth.py  ``` | Updates cell morphology and particle positions on the RDME lattice as the cell grows spherically. |
 | ``` Hook.py ``` | IMPORTANT Defines main algorithm used when interrupting the RDME solver. Includes executing all other simulations methods and calling functions to communicate betwwen the methods. |
 | ``` ImportInitialConditions.py ``` | Loads initial condition data into initialize the system. |
 | ``` InitRdmeDNA.py ``` | Creates an initial condition chromosome configuration using ```sc_chain_generation``` and communicates the structure to the RDME lattice. |
