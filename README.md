@@ -61,7 +61,7 @@ python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 1 -drs 13 -dsd /hom
 | ``` LatticeFunctions.py ``` | Defines functions used in communication to manipulate the RDME lattice. |
 | ``` MC_CME.py ``` | Creates and runs the global CME simulation for tRNA charging and transcription. |
 | ``` MC_RDME_initialization.py ``` | Initializes RDME simulation including site types and reactions. |
-| ``` RegionsAndComplexes.py ``` | Builds shapes of cell regions (e.g. membrane and cytoplasm) onto the RDME lattice. |
+| ``` RegionsAndComplexes.py ``` | Initializes shapes of cell regions (e.g. membrane and cytoplasm) onto the RDME lattice. |
 | ``` RibosomesRDME.py ``` | Updates excluded volume of ribosomes so that the ribosomes lattice sites follow the center of mass particle. |
 | ``` Run_CME.py ``` | Executable file for global CME. |
 | ``` Rxns_CME.py ``` | Defines set of reactions simulated in the global CME. |
