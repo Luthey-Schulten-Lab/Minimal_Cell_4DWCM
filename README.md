@@ -15,6 +15,20 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 ## Running the Model
 
+Before running the model, you must activate the conda environment in which you built Lattice Microbes:
+
+```
+conda activate envName
+```
+
+Then, you must make sure that you LAMMPS installation for ```btree_chromo``` is in your path. You can check this by running:
+
+```
+lammps -h
+```
+
+Once your environment is ready, you can now run the model.
+
 ```Whole_Cell_Minimal_Cell.py``` is the main executable file for the model. The executable has the following user input variables:
 
 | Variable | Shorthand | Description |
@@ -36,21 +50,21 @@ python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /hom
 | File Name | Description |
 |-----------|-------------|
 |```input_data/``` | Directory containing initial conditions, kinetic parameters, and other data used to initialize the whole-cell model. |
-| ``` communicate_counts.py ``` | Procedures used to communicate counts of molecules between different methodologies. For example, extraction of enzyme counts from RDME to use in rates of ODE reactions. |
-| ``` diffusion_functions.py ``` | Sets the diffudion rules for all molecules that are put into the RDME lattice. |
-| ``` file_saving.py ``` | Records the cell state and generates restart files. |
+| ``` Communicate.py ``` | Procedures used to communicate counts of molecules between different methodologies. For example, extraction of enzyme counts from RDME to use in rates of ODE reactions. |
+| ``` Diffusion.py ``` | Sets the diffudion rules for all molecules that are put into the RDME lattice. |
+| ``` FileSaving.py ``` | Records the cell state and generates restart files. |
 | ```FreeDTS_functions.py``` | Defines set of functions used to interpret output files of membrane shapes from FreeDTS. |
 | ``` GIP_rates.py ``` | Contains functions for rate equations of genetic information processing reactions. |
-| ``` hook.py ``` | IMPORTANT Defines main algorithm used when interrupting the RDME solver. Includes executing all other simulations methods and calling functions to communicate betwwen the methods. |
-| ``` importInitialConditions.py ``` | Loads initial condition data into initialize the system. |
+| ``` Hook.py ``` | IMPORTANT Defines main algorithm used when interrupting the RDME solver. Includes executing all other simulations methods and calling functions to communicate betwwen the methods. |
+| ``` ImportInitialConditions.py ``` | Loads initial condition data into initialize the system. |
 | ``` InitRdmeDNA.py ``` | Creates an initial condition chromosome configuration using ```sc_chain_generation``` and communicates the structure to the RDME lattice. |
-| ``` integrate.py ``` | Runs the ODE integrator for metabolism. |
-| ``` lattice_functions.py ``` | Defines functions used in communication to manipulate the RDME lattice. |
+| ``` Integrate.py ``` | Runs the ODE integrator for metabolism. |
+| ``` LatticeFunctions.py ``` | Defines functions used in communication to manipulate the RDME lattice. |
 | ``` MC_CME.py ``` | Creates and runs the global CME simulation for tRNA charging and transcription. |
 | ``` MC_RDME_initialization.py ``` | Initializes RDME simulation including site types and reactions. |
-| ``` regions_and_complexes.py ``` | Builds shapes of cell regions (e.g. membrane and cytoplasm) onto the RDME lattice. |
-| ``` ribosomesRDME.py ``` | Updates excluded volume of ribosomes so that the ribosomes lattice sites follow the center of mass particle. |
-| ``` run_CME.py ``` | Executable file for global CME. |
+| ``` RegionsAndComplexes.py ``` | Builds shapes of cell regions (e.g. membrane and cytoplasm) onto the RDME lattice. |
+| ``` RibosomesRDME.py ``` | Updates excluded volume of ribosomes so that the ribosomes lattice sites follow the center of mass particle. |
+| ``` Run_CME.py ``` | Executable file for global CME. |
 | ``` Rxns_CME.py ``` | Defines set of reactions simulated in the global CME. |
 | ``` Rxns_ODE.py ``` | Defines set of reactions simulated using deterministic ODEs. |
 | ``` Rxns_RDME.py ``` | Defines set of reactions simulated on the RDME lattice. |
