@@ -1,21 +1,18 @@
 # MC4D
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+This repository contains the 4D whole-cell model for the genetically minimal cell, JCVI-syn3A. This model is published in XXXXXXXXXX. Below, you will find instructions on required programs that need to be installed, instructions on how to run the model, and descriptions of individual simulation files.
 
 ## Required Programs
 
 - [Lattice Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes)
+- [odecell](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) (Install this in the same conda environment as Lattice Microbes AFTER building Lattice Microbes)
 - [btree_chromo](https://gitlab.com/brg4/btree_chromo) - [https://gitlab.com/brg4/btree_chromo](https://gitlab.com/brg4/btree_chromo) (Requires installation with Kokkos enabled version of LAMMPS)
 - [sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation) - [https://gitlab.com/brg4/sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation)
 - [FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) - [https://github.com/weria-pezeshkian/FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) (OPTIONAL: Some pregenerated membrane shapes are provided here.)
 
 ## Running the Model
 
-Before running the model, you must activate the conda environment in which you built Lattice Microbes:
+The model here is runnbale as-is and does not reuire its own installation. Once you have installed the required programs listed above, before running the model, you must activate the conda environment in which you built Lattice Microbes:
 
 ```
 conda activate envName
