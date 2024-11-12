@@ -27,7 +27,9 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 Example executable:
 
-```python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /home/zane/Software/```
+```
+python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 0 -drs 13 -dsd /home/zane/Software/
+```
 
 ## Descriptions of Simulation Files
 
