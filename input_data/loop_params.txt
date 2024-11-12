@@ -1,0 +1,34 @@
+# system parameters
+
+# minimum distance separating anchor and hinge on strand - [# monomers]
+min_dist=6
+
+# distribution family for steps
+family=poisson
+# average extrusion distance [# monomers]
+ext_avg=20
+# max extrusion distance [# monomers]
+ext_max=30
+
+# hinge unbinding probability
+p_unbinding=0.0
+# grab radius - [A]
+r_g=5.0E+2
+
+# simulator parameters
+
+# equilibrium bond length of between anchor and hinge - [A]
+r_0=3.4E+1
+# bond stiffness between anchor and hinge - [(Kcal/mol)/A^2]
+k=1.0E+1
+
+# loop update frequency - [# timesteps]
+freq_loop=1000
+
+# topoisomerase relaxation (soft DNA-DNA pairs) frequency - [# timesteps]
+freq_topo=5000
+# topoisomerase relaxation (soft DNA-DNA pairs) interval - [# timesteps]
+dNt_topo=5000
+
+
+

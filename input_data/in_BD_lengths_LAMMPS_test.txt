@@ -1,0 +1,10 @@
+r_sphere=2.0E+3
+r_bdry=4.25E+1
+
+mono_shape_x=3.4E+1
+mono_shape_y=3.4E+1
+mono_shape_z=3.4E+1
+
+ribo_shape_x=2.0E+2
+ribo_shape_y=2.0E+2
+ribo_shape_z=2.0E+2

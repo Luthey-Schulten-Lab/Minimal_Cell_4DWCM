@@ -1,0 +1,8 @@
+Protein	Metabolite IDs
+P_0621	M_apoACP_c,M_ACP_c,M_ACP_R_c
+P_0065	M_trdox_c,M_trdrd_c
+P_0227	M_lpl_PdhC_c,M_dhlpl_PdhC_c,M_acdhlpl_PdhC_c
+P_0233	ptsi,ptsi_P
+P_0694	ptsh,ptsh_P
+P_0234	crr,crr_P
+P_0779	ptsg,ptsg_P
