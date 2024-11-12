@@ -8,10 +8,10 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 ## Required Programs
 
-- [Lattice Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes)
-- [btree_chromo](https://gitlab.com/brg4/btree_chromo) [https://gitlab.com/brg4/btree_chromo](https://gitlab.com/brg4/btree_chromo) (Requires installation with Kokkos enabled version of LAMMPS)
-- [sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation) [https://gitlab.com/brg4/sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation)
-- [FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) [https://github.com/weria-pezeshkian/FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) (OPTIONAL: Some pregenerated membrane shapes are provided here.)
+- [Lattice Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes)
+- [btree_chromo](https://gitlab.com/brg4/btree_chromo) - [https://gitlab.com/brg4/btree_chromo](https://gitlab.com/brg4/btree_chromo) (Requires installation with Kokkos enabled version of LAMMPS)
+- [sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation) - [https://gitlab.com/brg4/sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation)
+- [FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) - [https://github.com/weria-pezeshkian/FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) (OPTIONAL: Some pregenerated membrane shapes are provided here.)
 
 ## Running the Model
 
