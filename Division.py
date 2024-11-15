@@ -268,12 +268,10 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
 
     print(cutoff, radius)
 
-    print(sim.latticeSpacing)
-
-    new_radius = radius*(1e-9)/sim.latticeSpacing
+    new_radius = radius*(1e-9)/sim_properties['lattice_spacing']
     print(new_radius)
 
-    c2c_dist = (cutoff*2*(1e-9))/sim.latticeSpacing
+    c2c_dist = (cutoff*2*(1e-9))/sim_properties['lattice_spacing']
     print(c2c_dist)
 
     cell1_center = [sim_center[0], sim_center[1], sim_center[2]-np.rint(c2c_dist/2)]
