@@ -103,7 +103,8 @@ def initSim(hook_step, write_step, totalTime, workingDirectoryName):
                   filename,
                   [N_edges_x,N_edges_y,N_edges_z],
                   lattice_spacing,
-                  "extracellular")
+                  "extracellular",
+                  latticeType='Int')
 
     radius_nm = 2.00e-7
     cyto_radius = int(round(radius_nm/sim.latticeSpacing)) #m converted to lattice sites (8 nm lattice spacing)

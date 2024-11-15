@@ -69,7 +69,7 @@ def updateCountsCME(sim_properties):
         try: #TAB CHANGE
             CMEsim=PP.openLMFile(CSIMfilename)
             CMEspecies = PP.getSpecies(CMEsim)
-            count_trace = PP.getSpecieTrace(CMEsim, CMEspecies[0][0])
+            count_trace = PP.getSpecieTrace(CMEsim, CMEspecies[0])
             PP.closeLMFile(CMEsim)
             bad_cme=True
         except:
@@ -84,17 +84,17 @@ def updateCountsCME(sim_properties):
     
     for specie in CMEspecies:
         
-        count_trace = PP.getSpecieTrace(CMEsim, specie[0])
+        count_trace = PP.getSpecieTrace(CMEsim, specie)
 
         count = count_trace[-1]
         
-        if specie[0] in sim_properties['cme_state_tracker']:
+        if specie in sim_properties['cme_state_tracker']:
             
 #             print('Updating specie: ', specie)
             
-            sim_properties['cme_state_tracker'][specie[0]] = sim_properties['counts'][specie[0]] - count
+            sim_properties['cme_state_tracker'][specie] = sim_properties['counts'][specie] - count
 
-        sim_properties['counts'][specie[0]] = count
+        sim_properties['counts'][specie] = count
 
     PP.closeLMFile(CMEsim)
     

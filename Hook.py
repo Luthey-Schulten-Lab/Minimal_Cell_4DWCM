@@ -8,7 +8,7 @@ import Growth as growth
 import Division as division
 import RibosomesRDME as ribosomesRDME
 import SpatialDnaDynamics as DNA
-import MC_CME_polysomes as MCCME
+import MC_CME as MCCME
 import Rxns_ODE as ODE
 import ImportInitialConditions as IC
 import Integrate as integrate
