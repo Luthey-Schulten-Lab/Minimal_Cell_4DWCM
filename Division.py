@@ -252,66 +252,57 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
     
     N_edges = sim_properties['lattice_edges']
 
-#     cellV = cell_V/((1e-9)**3)/2
+    cellV = sim_properties['volume']/((1e-9)**3)/2
 
-#     cellSA = cell_SA/((1e-9)**2)/2
+    cellSA = sim_properties['SA']/((1e-9)**2)/2
     
-    gamma_V = str(round_sig(sim_properties['gamma_V'], sig=2))
-    
-    memFname = sim_properties['membrane_directory'] + '/output{:s}_mash4/InnerBM.dat'.format(gamma_V)
-    
-    memcoords = fdf.readTS2CG(memFname, rescaleFactor=1)
-    
-    N_edges = sim_properties['lattice_edges']
-    lattice_center = sim_properties['lattice_center']
-        
-    membrane = np.full((int(N_edges[0]), int(N_edges[1]), int(N_edges[2])), False)
-    
-    for vertex in memcoords:
-        x = int(vertex[0]*1e-9/(sim_properties['lattice_spacing']) + lattice_center[0])
-        y = int(vertex[1]*1e-9/(sim_properties['lattice_spacing']) + lattice_center[1])
-        z = int(vertex[2]*1e-9/(sim_properties['lattice_spacing']) + lattice_center[2])
-        membrane[x, y, z] = True
+    def division_equations(f):
 
-    cytoplasm = np.full((int(N_edges[0]), int(N_edges[1]), int(N_edges[2])), False)
-    
-    mem_close = build.closing(membrane, se = build.se26)
-    membrane = membrane | mem_close
+        cutoff, radius = f
 
-    for j in range(N_edges[1]):
-        for k in range(N_edges[2]):
-            lattice_line = membrane[:,j,k]
-            if np.sum(lattice_line) > 1:
-                max_mem = int(max(np.argwhere(lattice_line)))
-                started = False
-                for i in range(len(lattice_line)):
-                    if i < max_mem:
-                        if lattice_line[i]:
-                            if not started:
-                                started = True
-                            elif started:
-                                if lattice_line[i+1]:
-                                    started = False
-                        elif not lattice_line[i]:
-                            if started:
-                                cytoplasm[i,j,k] = True
-    
-#     all_cytoplasm = all_cytoplasm & ~membrane
+        return ((2/3)*np.pi*radius**3 + np.pi*cutoff*radius**2 - np.pi/3*cutoff**3 - cellV, 2*np.pi*radius*(cutoff+radius) - cellSA)
+
+    cutoff, radius = fsolve(division_equations, (c2c,div_radius))
+
+    print(fsolve(division_equations, (c2c,div_radius)))
+
+    print(cutoff, radius)
+
+    print(sim.latticeSpacing)
+
+    new_radius = radius*(1e-9)/sim.latticeSpacing
+    print(new_radius)
+
+    c2c_dist = (cutoff*2*(1e-9))/sim.latticeSpacing
+    print(c2c_dist)
+
+    cell1_center = [sim_center[0], sim_center[1], sim_center[2]-np.rint(c2c_dist/2)]
+
+    cytoplasm1 = build.ellipsoid(radius = new_radius, center = cell1_center)
+
+    cell2_center = [sim_center[0], sim_center[1], sim_center[2]+np.rint(c2c_dist/2)]
+
+    cytoplasm2 = build.ellipsoid(radius = new_radius, center = cell2_center)
+
+    cytoplasm = cytoplasm1 | cytoplasm2
+
     cyto_dilation = build.dilate(cytoplasm, se = build.se26)
     cyto_shell = cyto_dilation & ~cytoplasm
     cyto_dilation = build.dilate(cyto_dilation, se = build.se26)
     membrane = cyto_dilation & ~cyto_shell & ~cytoplasm
+    extracellular = ~cyto_dilation
     
-#     membrane = build.dilate(all_cytoplasm, se = build.se26)
-#     membrane = membrane & ~all_cytoplasm
-    
-#     cytoplasm = build.erode(all_cytoplasm, se = build.se26)
-    
-#     cytplasm = cytoplasm & ~membrane
+#     cytoplasm = cytoplasm & ~region_dict["DNA"]["shape"]
+#     cyto_shell = cyto_shell & ~region_dict["DNA"]["shape"]
 
-#     cyto_shell = all_cytoplasm & ~cytoplasm & ~membrane
+#     ribo_site_dict = ribosomesRDME.placeRibosomes(region_dict, ribo_site_dict, N_edges, ribo_IDs, lattice, growth_step=True)
+    
+#     region_dict['extracellular']['shape'] = extracellular
+#     region_dict['membrane']['shape'] = membrane
+#     region_dict['outer_cytoplasm']['shape'] = cyto_shell
+#     region_dict['cytoplasm']['shape'] = cytoplasm
 
-    extracellular = ~membrane & ~cyto_shell & ~cytoplasm
+#     extracellular = ~membrane & ~cyto_shell & ~cytoplasm
 
     region_dict['extracellular']['shape'] = extracellular
     region_dict['membrane']['shape'] = membrane
@@ -329,12 +320,6 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
     ribo_site_dict = ribosomesRDME.placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateTranslat=False)
     
     region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, region_dict)
-    
-#     region_dict['extracellular']['shape'] = extracellular
-#     region_dict['membrane']['shape'] = membrane
-#     region_dict['outer_cytoplasm']['shape'] = cyto_shell
-#     region_dict['cytoplasm']['shape'] = inner_cytoplasm
-#     region_dict['Z-ring']['shape'] = division_plane
     
     for ribo_type, type_dict in ribo_site_dict.items():
         
