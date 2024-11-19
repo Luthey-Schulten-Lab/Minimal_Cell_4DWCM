@@ -19,6 +19,8 @@ import time as timepy
 
 from LatticeFunctions import *
 
+from scipy.optimize import fsolve
+
 
 #########################################################################################
 def updateCountsRDME(RDMEsim, sim_properties, lattice):
@@ -1031,9 +1033,9 @@ def updateSA(sim_properties):
     cyto_radius_nm_equivalent_sphere = np.sqrt(sim_properties['SA']/(4*np.pi))
     
     ##### Start division if cell has grown to more than double its initial volume #####
-#     if cyto_radius_nm_equivalent_sphere > double_V_radius:
+    if cyto_radius_nm_equivalent_sphere > double_V_radius:
         
-#         sim_properties['division_started'] = True
+        sim_properties['division_started'] = True
     
 #     cyto_radius = int(round(cyto_radius_nm/sim_properties['lattice_spacing']))
     cyto_radius = int(cyto_radius_nm/sim_properties['lattice_spacing'])
@@ -1043,23 +1045,42 @@ def updateSA(sim_properties):
     sim_properties['volume_L'] = sim_properties['volume']*1000
     
     sim_properties['counts']['Volume'] = int(sim_properties['volume_L']*1e21)
-    
+
     if sim_properties['division_started']:
-        
-        gamma_V = round_sig(sim_properties['volume'] / ((4/3)*np.pi*(cyto_radius_nm_equivalent_sphere)**3), sig=4)
-        
+
+        gamma_V = round_sig(sim_properties['volume'] / ((4 / 3) * np.pi * (cyto_radius_nm_equivalent_sphere) ** 3),
+                            sig=4)
+
         print('Gamma V: ', gamma_V)
-        
+
         if gamma_V <= sim_properties['next_gamma_V']:
-            
+
             sim_properties['gamma_V'] = round_sig(sim_properties['next_gamma_V'], sig=2)
-        
+
             sim_properties['next_gamma_V'] = sim_properties['next_gamma_V'] - 0.01
-            
+
+            # Calculate R and H based on equations for SA and V, of overlapping spheres minus inner caps
+            # The equations below are for the SA and V of the *total* cell shape (include both sides of the dividing cell)
+
+            volume_equation = lambda cutoff, radius: (
+                                                                 4 / 3) * np.pi * radius ** 3 + 2 * np.pi * cutoff * radius ** 2 - (
+                                                                 2 * np.pi / 3) * cutoff ** 3
+            surface_area_equation = lambda cutoff, radius: 4 * np.pi * radius * (cutoff + radius)
+
+            division_equations = lambda f: [
+                volume_equation(f[0], f[1]) - sim_properties['volume'],
+                surface_area_equation(f[0], f[1]) - sim_properties['SA']
+            ]
+
+            # Solve for cutoff and radius using initial guesses
+            result = fsolve(division_equations, [0, sim_properties['cyto_radius_nm']])
+            sim_properties['divH'], sim_properties['divR'] = result[0], result[1]  # store the results; units are m
+            print(sim_properties['divH'], sim_properties['divR'])
+
             updateRegions = True
-            
+
         else:
-            
+
             updateRegions = False
         
 #         sim_properties['gamma_V'] = round_sig(sim_properties['next_gamma_V'], sig=2)

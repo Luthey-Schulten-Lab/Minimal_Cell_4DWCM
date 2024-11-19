@@ -620,8 +620,10 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
             f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
             
         if sim_properties['division_started']:
-            f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
-        
+            cyto_radius_angstroms = int((sim_properties['divR'] * (1e9)) * 10)
+            cyto_height_angstroms = int((sim_properties['divH'] * (1e9)) * 10)
+            f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(cyto_height_angstroms, cyto_radius_angstroms))
+
 #         if (sim_properties['gamma_V'] == 1.0) and sim_properties['division_started']:
 #             f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
             

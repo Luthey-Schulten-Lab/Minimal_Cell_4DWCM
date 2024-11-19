@@ -249,38 +249,18 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
     """
 
     build = RegionBuilder(RDMEsim)
-    
-    N_edges = sim_properties['lattice_edges']
 
-    cellV = sim_properties['volume']/((1e-9)**3)/2
+    new_height = sim_properties['divH'] / sim_properties['lattice_spacing']  # in units of number of cubes
+    new_radius = sim_properties['divR'] / sim_properties['lattice_spacing']  # in units of number of cubes
+    print(new_height, new_radius)
 
-    cellSA = sim_properties['SA']/((1e-9)**2)/2
-    
-    def division_equations(f):
+    cell1_center = [sim_center[0], sim_center[1], sim_center[2] - np.rint(new_height)]
 
-        cutoff, radius = f
+    cytoplasm1 = build.ellipsoid(radius=new_radius, center=cell1_center)
 
-        return ((2/3)*np.pi*radius**3 + np.pi*cutoff*radius**2 - np.pi/3*cutoff**3 - cellV, 2*np.pi*radius*(cutoff+radius) - cellSA)
+    cell2_center = [sim_center[0], sim_center[1], sim_center[2] + np.rint(new_height)]
 
-    cutoff, radius = fsolve(division_equations, (c2c,div_radius))
-
-    print(fsolve(division_equations, (c2c,div_radius)))
-
-    print(cutoff, radius)
-
-    new_radius = radius*(1e-9)/sim_properties['lattice_spacing']
-    print(new_radius)
-
-    c2c_dist = (cutoff*2*(1e-9))/sim_properties['lattice_spacing']
-    print(c2c_dist)
-
-    cell1_center = [sim_center[0], sim_center[1], sim_center[2]-np.rint(c2c_dist/2)]
-
-    cytoplasm1 = build.ellipsoid(radius = new_radius, center = cell1_center)
-
-    cell2_center = [sim_center[0], sim_center[1], sim_center[2]+np.rint(c2c_dist/2)]
-
-    cytoplasm2 = build.ellipsoid(radius = new_radius, center = cell2_center)
+    cytoplasm2 = build.ellipsoid(radius=new_radius, center=cell2_center)
 
     cytoplasm = cytoplasm1 | cytoplasm2
 
