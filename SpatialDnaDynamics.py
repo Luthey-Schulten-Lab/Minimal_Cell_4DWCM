@@ -26,7 +26,7 @@ import FreeDTS_functions as fdf
 
 
 #########################################################################################
-def updateChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict):
+def updateChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict, updateRegions):
     """
     Inputs:
     lattice - LM lattice object including particle and site lattice
@@ -46,6 +46,10 @@ def updateChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict)
     elif sim_properties['last_DNA_step'] is not None:
     
         checkLastChromosome(sim_properties)
+        
+        if ('rotated_DNA' not in sim_properties.keys()) and sim_properties['division_started']:
+            
+            rotateChromosome(time, sim_properties)
 
 #         deleteOldChromosome(lattice)
     
@@ -63,7 +67,7 @@ def updateChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict)
 
     #     writeMembraneBoundaryFile(time, region_dict, sim_properties)
 
-        writeChromosomeInputFile(time, sim_properties)
+        writeChromosomeInputFile(time, sim_properties, updateRegions)
 
         runNewChromosome(time, sim_properties)
         
@@ -96,6 +100,10 @@ def updateChromosomeDivision(time, lattice, sim_properties, region_dict, ribo_si
     elif sim_properties['last_DNA_step'] is not None:
     
         checkLastChromosome(sim_properties)
+        
+        if 'rotated_DNA' not in sim_properties.keys():
+            
+            rotateChromosome(time, sim_properties)
 
 #         deleteOldChromosome(lattice)
     
@@ -115,11 +123,11 @@ def updateChromosomeDivision(time, lattice, sim_properties, region_dict, ribo_si
 
     #     writeMembraneBoundaryFile(time, region_dict, sim_properties)
     
-        bp_grow_steps = makeBdryCompressionFiles(time, sim_properties, slice_size=5)
+#         bp_grow_steps = makeBdryCompressionFiles(time, sim_properties, slice_size=5)
         
-        DirectivesFname = writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps)
+#         DirectivesFname = writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps)
 
-#         writeChromosomeInputFile(time, sim_properties)
+        DirectivesFname = writeDivisionChromosomeInputFile(time, sim_properties)
 
         runDivChromosome(sim_properties, DirectivesFname)
     
@@ -193,48 +201,6 @@ def checkLastChromosome(sim_properties):
     print("Chromosome configuration ready to load")
         
     return None
-#########################################################################################
-
-
-#########################################################################################
-# def NEWcheckLastChromosome(sim_properties):
-    
-#     print("Checking for configuration from previous DNA step")
-    
-#     workDir = sim_properties['working_directory']+'DNA/'
-#     DnaLogFile = workDir + 'log_{:d}.log'.format(sim_properties['last_DNA_step'])
-    
-#     DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    
-#     last_DNA_complete = os.path.isfile(DNAfile)
-    
-#     if not last_DNA_complete:
-        
-#         print("Waiting on BRGDNA to complete configuration")
-        
-#     DNA_wait = 0
-    
-#     while not last_DNA_complete:
-        
-#         if DNA_wait>=1800:
-            
-#             rescueDNA(sim_properties)
-            
-#             print('Created Rescue Files')
-            
-#             return None
-        
-#         last_DNA_complete = os.path.isfile(DNAfile)
-        
-#         timepy.sleep(10)
-        
-#         DNA_wait = DNA_wait + 10
-        
-#     print("Waited seconds: "+str(DNA_wait))
-        
-#     print("Chromosome configuration ready to load")
-        
-#     return None
 #########################################################################################
 
 
@@ -580,7 +546,7 @@ def runNewChromosome(time, sim_properties):
 
     
 #########################################################################################
-def writeChromosomeInputFile(time, sim_properties):
+def writeChromosomeInputFile(time, sim_properties, updateRegions):
     """
     Inputs:
     sim_properties - Dictionary of simulation variables and state trackers
@@ -652,13 +618,16 @@ def writeChromosomeInputFile(time, sim_properties):
             
         if not sim_properties['division_started']:
             f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
-        
-        if (sim_properties['gamma_V'] == 1.0) and sim_properties['division_started']:
-            f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
             
-        if (sim_properties['gamma_V'] < 1.0) and sim_properties['division_started']:
-            memFname = sim_properties['DNA_membrane_file']
-            f.write('load_bdry_coords:' + memFname + ',row\n')
+        if sim_properties['division_started']:
+            f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+        
+#         if (sim_properties['gamma_V'] == 1.0) and sim_properties['division_started']:
+#             f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+            
+#         if (sim_properties['gamma_V'] < 1.0) and sim_properties['division_started']:
+#             memFname = sim_properties['DNA_membrane_file']
+#             f.write('load_bdry_coords:' + memFname + ',row\n')
         
 #         f.write('load_bdry_coords:' + MemBoundaryFname + ',row\n')
 
@@ -724,7 +693,8 @@ def writeChromosomeInputFile(time, sim_properties):
 #         f.write('simulator_run_soft_FENE:20000,10000,10000,append,skip_first\n')
         f.write('sync_simulator_and_system\n')
     
-        f.write('load_ribo_coords:' + RiboFname + ',row\n')
+        if not updateRegions:
+            f.write('load_ribo_coords:' + RiboFname + ',row\n')
         
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
@@ -1015,21 +985,14 @@ def getReplicatedSegments(sim_properties):
 
 
 #########################################################################################
-def writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps):
-    """
-    Inputs:
-    sim_properties - Dictionary of simulation variables and state trackers
-    
-    Returns:
-    Called by:
-    Description:
-    """
-    
-#     timestep = int(time/sim_properties['timestep'])
-    
+def writeDivisionChromosomeInputFile(time, sim_properties):
+
     headDir = sim_properties['dna_software_directory']
     workDir = sim_properties['working_directory']+'DNA/'
     
+    rep_started = sim_properties['rep_started']
+    
+    cyto_radius_angstroms = int((sim_properties['cyto_radius'])*sim_properties['lattice_spacing']*10/1e-9)
     timestep = int(time/sim_properties['timestep'])
     
     rng_number = int(timestep/10000+sim_properties['dna_rng_seed'])
@@ -1046,13 +1009,8 @@ def writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps):
         PrevDnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
     except:
         PrevDnaBinFname = workDir + 'x_chain_Syn3A_chromosome_init_rep00001.bin'
-        
-    try:
-        PrevDnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    except:
-        PrevDnaQuatFname = None
     
-#     RiboFname = workDir + 'ribo_obstacles_{:d}.bin'.format(timestep)
+    RiboFname = workDir + 'ribo_obstacles_{:d}.bin'.format(timestep)
     
     MemBoundaryFname = workDir + 'mem_boundary_{:d}.bin'.format(timestep)
     
@@ -1060,246 +1018,66 @@ def writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps):
     
     DnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(timestep)
     
+    try:
+        PrevDnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
+    except:
+        PrevDnaQuatFname = None
+    
     with open(DirectivesFname, 'w') as f:
 
         f.write('btree_prng_seed:10\n')
         f.write('replicator_prng_seed:10\n')
-
-#         f.write('new_chromo:5000\n')
-        f.write('input_state:' + workDir + 'rep_state_{:d}.txt\n'.format(sim_properties['last_DNA_step']))
+        
+        if not rep_started:
+            f.write('new_chromo:54338\n')
+        else:
+            f.write('input_state:' + workDir + 'rep_state_{:d}.txt\n'.format(sim_properties['last_DNA_step']))
 
         f.write('load_BD_lengths:' + sim_properties['head_directory'] + 'input_data/in_BD_lengths_LAMMPS_test.txt\n')
-#         f.write('load_BD_lengths:/home/zane/in_BD_lengths_LAMMPS_test.txt\n')
         
         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
-        
-        f.write('load_mono_quats:' + PrevDnaQuatFname + ',row\n')
-        
-        memFname = workDir + 'mem_boundary_{:d}_1.bin'.format(timestep)
             
-        f.write('load_bdry_coords:' + memFname + ',row\n')
-
-#         f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+        # Create the division cell shape
+        f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
             
+        # Set simulator parameters and paths
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
         f.write('simulator_set_prng_seed:{:d}\n'.format(rng_number))
         f.write('simulator_set_nProc:{:d}\n'.format(processor_number))
-        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model\n')
-#         f.write('simulator_set_output_details:' + workDir + ',chromosome_{:d}\n'.format(timestep))
+        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model_kk\n')
+
         f.write('simulator_set_output_details:' + workDir + ',chromosome\n'.format(timestep))
 
         f.write('simulator_set_delta_t:1.0E+5\n')
         
-#         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
-#         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
-        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
+        # TURN OFF TWISTING #
+        f.write('switch_twisting_angles:F\n')
+        f.write('switch_ellipsoids:F\n')
         
-#         f.write('switch_Ori_bdry_attraction:T\n')
-#         f.write('switch_Ori_pair_repulsion:T\n')
-
+        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
+            
         f.write('dump_topology:'+ workDir +'chromo_topo_{:d}.dat,1\n'.format(timestep))
 
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
+        # Minimize the system
         f.write('simulator_relax_progressive:1000,500\n')
         
         f.write('sync_simulator_and_system\n')
         
-        for i in range(1,bp_grow_steps+1):
-            
-            memFname = workDir + 'mem_boundary_{:d}_{:d}.bin'.format(timestep,i)
-            
-            f.write('load_bdry_coords:' + memFname + ',row\n')
-            
-            f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-#             sys_write_sim_read_LAMMPS_data_at_timestep:/home/ben/Data/btree_chromo/bdry_particle_expansion/data.5000mono_50ribo_bdry900A
-            f.write('simulator_expand_bdry_particles:2.0,10,100,10\n')
-            f.write('sync_simulator_and_system\n')
-            f.write('simulator_run_hard_FENE:10,5,10,append,skip_first\n')
-            f.write('sync_simulator_and_system\n')
+        # Run some BD steps so that the minimized chromosome state is recorded
+        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
-#         f.write('write_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-
-#         f.write('switch_Ori_pair_repulsion:T\n')
-
-#         loop_number=20
-        
-#         f.write('simulator_run_loops:{:d},1000,100,100,append,nofirst\n'.format(loop_number))
-        
+        f.write('simulator_run_topoDNA_FENE:1000,500,500,append,skip_first\n')
+    
         f.write('sync_simulator_and_system\n')
-
-#         f.write('write_mono_xyz:' + DnaXyzFname + '\n')
-        
-        f.write('write_mono_coords:' + DnaBinFname + ',row\n')
-        
-        f.write('write_mono_quats:' + DnaQuatFname + ',row\n')
-        
+    
+        # Write out the monomer coordinates of the configuration in the new membrane shape
         f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
         
-#         f.write('write_ribo_coords:' + RiboBinFname + ',row\n')
+        f.write('write_mono_coords:' + DnaBinFname + ',row\n')
     
-    return DirectivesFname
-#########################################################################################
-
-
-#########################################################################################
-def makeBdryCompressionFiles(time, sim_properties, slice_size=10):
-    """
-    Inputs:
-    sim_properties - Dictionary of simulation variables and state trackers
-    
-    Returns:
-    Called by:
-    Description:
-    """
-    
-    print('NEW MEMBRANE SHAPE')
-    
-    timestep = int(time/sim_properties['timestep'])
-    
-    workDir = sim_properties['working_directory']+'DNA/'
-    
-    DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    
-    with open(DNAfile,'rb') as f:
-
-        DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
-
-        DNAcoords = np.divide(DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T,10)
-
-    zmax = 0
-    zmin = 0
-
-    for coord in DNAcoords:
-
-        if coord[2]>zmax:
-            zmax = float(coord[2])
-
-        if coord[2]<zmin:
-            zmin = float(coord[2])
-
-        xy_radius = (coord[0]**2 + coord[1]**2)**(1/2)
-
-#         if xy_radius > DNAxyMax:
-
-#             DNAxyMax = float(xy_radius)
-
-    print(zmin,zmax)
-    
-    gamma_V = str(round_sig(sim_properties['gamma_V'], sig=2))
-
-    memFname = sim_properties['membrane_directory'] + 'output{:s}_mash4/InnerBM.dat'.format(gamma_V)
-    memcoords = fdf.readTS2CG(memFname, rescaleFactor=1)
-    print(len(memcoords))
-
-    zlow = float(zmin)
-    zhigh = zlow + slice_size
-    initial_scaling = 0
-    
-    while (zhigh<(zmax+slice_size)):
-        
-        DNAxyMax = 0
-        
-        for coord in DNAcoords:
-            
-            if zlow<=coord[2]<=zhigh:
-
-                xy_radius = (coord[0]**2 + coord[1]**2)**(0.5)
-
-                if xy_radius > DNAxyMax:
-
-                    DNAxyMax = float(xy_radius)
-                    
-                    
-        DNAxyMax = DNAxyMax+5+1.7 #+4.25 #Account for size of boundary and DNA particles
-
-        min_rxy = float(DNAxyMax)
-        
-        for coord in memcoords:
-            
-            if zlow<=coord[2]<=zhigh:
-                
-                xy_radius = (coord[0]**2 + coord[1]**2)**(0.5)
-
-                if xy_radius<min_rxy:
-
-                    min_rxy = float(xy_radius)
-                    
-        layer_scaling_factor = DNAxyMax/min_rxy
-                    
-        initial_scaling = max(initial_scaling, layer_scaling_factor)
-        
-        zlow = float(zhigh)
-        zhigh = zhigh + slice_size
-
-                    
-    max_r = 0            
-    for coord in memcoords:
-#         if zlow<coord[2]<zhigh:
-        xyz_radius = (coord[0]**2 + coord[1]**2 + coord[2]**2)**(0.5)
-        if xyz_radius > max_r:
-            max_r = float(xyz_radius)
-                    
-    print(max_r)
-
-#     initial_scaling = DNAxyMax/min_rxy
-    print(initial_scaling)
-    bp_increase = 5 #4.25 #nm
-    max_r_scaled = initial_scaling*max_r
-    max_r_diff = max_r_scaled - max_r
-    print(max_r_diff)
-    bp_grow_steps = int(max_r_diff/bp_increase)
-    scaling = float(initial_scaling)
-    curr_max_r = float(max_r_scaled)
-    for i in range(1,bp_grow_steps+1):
-    #     makeMembrane()
-        writeMembraneBoundaryFileBdryGrow(memcoords, workDir, timestep, rescale_factor=scaling, rescale_count=i)
-        if i < bp_grow_steps:
-            curr_max_r = curr_max_r - bp_increase
-            scaling = curr_max_r/max_r
-        
-    memFname = sim_properties['membrane_directory'] + 'output{:s}_mash3/InnerBM.dat'.format(gamma_V)
-    memcoords = fdf.readTS2CG(memFname, rescaleFactor=1)
-    print(len(memcoords))
-    lowResFname = writeMembraneBoundaryFileBdryGrow(memcoords, workDir, timestep, rescale_factor=scaling, rescale_count=0)
-    
-    sim_properties['DNA_membrane_file'] = lowResFname
-        
-#     print(curr_max_r)
-#     print(scaling)
-
-    return bp_grow_steps
-#########################################################################################
-
-
-#########################################################################################
-def writeMembraneBoundaryFileBdryGrow(memBoundaryCoords, working_directory, timestep, rescale_factor=1, rescale_count=1):
-    """
-    Inputs:
-    
-    Returns:
-    Called by:
-    Description:
-    """
-    
-    workDir = working_directory
-
-    # print(memBoundaryCoords)
-    memBoundaryCoords = np.array(memBoundaryCoords)*10*rescale_factor
-#     print(memBoundaryCoords.shape)
-
-    memBoundaryCoords = np.reshape(memBoundaryCoords,(int(len(memBoundaryCoords)),3),order='F')
-#     print(memBoundaryCoords.shape)
-    
-#     print(memBoundaryCoords)
-
-    fname = workDir + 'mem_boundary_{:d}_{:d}.bin'.format(timestep,rescale_count)
-
-    with open(fname, 'wb') as f:
-
-        memBoundaryCoords.tofile(f)
-        
-    return fname
+    return None
 #########################################################################################
 
 
@@ -1327,6 +1105,106 @@ def runDivChromosome(sim_properties, DirectivesFname):
     os.system(DNA_executable)
     
     return None
+#########################################################################################
+
+
+#########################################################################################
+def rotateChromosome(time, sim_properties):
+    
+    workDir = sim_properties['working_directory']+'DNA/'
+    
+#     timestep = int(time/sim_properties['timestep'])
+    
+#     DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(timestep)
+    DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+    
+    # Read in monomer coordinates
+    with open(DNAfile,'rb') as f:
+            
+        DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+
+    DNAcoords = DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T
+    
+    chromosome_length = 54338
+
+    # Read replication state topology
+    RepTopoFname = workDir +'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+
+    repTopoFile = open(RepTopoFname, 'r')
+    lines = repTopoFile.readlines()
+
+    if len(lines)>2:
+
+        daughterIdxs = lines[2].split('\n')[0].split(',')
+        newOriIdx = int(daughterIdxs[3])
+        leftArmPoint = int(daughterIdxs[2])
+        rightArmPoint = int(daughterIdxs[4])
+        
+    # Separate the coordinates for the mother and daughter chromosomes
+    mother_monomers = DNAcoords[:54338]
+    daughter_monomers = DNAcoords[leftArmPoint-1:rightArmPoint]
+    
+    # Calculate center of mass of both chromosomes
+    mCom = np.average(mother_monomers, axis=0)
+    dCom = np.average(daughter_monomers, axis=0)
+    
+    # Calculate vector between centers of mass
+    if mCom[2] > dCom[2]:
+        n = mCom - dCom
+    else:
+        n = dCom - mCom
+
+    # Calculate rotation matrix between center of mass vector and the z axis
+    n_z = np.array([0,0,1])
+
+    n_z = n_z/np.linalg.norm(n_z)
+
+    n_norm = n/np.linalg.norm(n)
+
+    axis = np.cross(n_z,n_norm)
+
+    axis = axis/np.linalg.norm(axis)
+
+    theta = np.arccos(np.dot(n_z,n_norm))
+
+    a = np.cos(theta/2)
+    b, c, d = axis * np.sin(theta/2)
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+
+    rotation_matrix = np.array([[aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+                     [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+                     [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
+    
+    sim_properties['rotation_matrix'] = rotation_matrix
+    
+    # Rotate every monomer for both chromosomes using the rotation matrix
+    monos_R = []
+
+    for mono in DNAcoords:
+
+        rotated_mono = np.dot(rotation_matrix,mono)
+
+        monos_R.append(rotated_mono)
+
+    monos_R = np.array(monos_R)
+    
+    # Update the monomer coordinates file with the rotated chromosomes' state
+    DNAfilePre = workDir + 'dna_monomers_{:d}_prerotation.bin'.format(sim_properties['last_DNA_step'])
+    DNAfilePost = DNAfile # workDir +  'dna_monomers_{:d}_postrotation.bin'.format(timestep)
+
+    os.system('mv ' + DNAfile + ' ' + DNAfilePre)
+
+    monos_R = np.reshape(monos_R,(int(len(monos_R)),3),order='F')
+
+    with open(DNAfilePost, 'wb') as f:
+
+        monos_R.tofile(f)
+        
+    sim_properties['rotated_DNA'] = True
+        
+    return None
+        
 #########################################################################################
 
 
@@ -1371,6 +1249,336 @@ def rescueDNA(sim_properties):
     
     return None
 #########################################################################################
+
+
+#########################################################################################
+# def NEWcheckLastChromosome(sim_properties):
+    
+#     print("Checking for configuration from previous DNA step")
+    
+#     workDir = sim_properties['working_directory']+'DNA/'
+#     DnaLogFile = workDir + 'log_{:d}.log'.format(sim_properties['last_DNA_step'])
+    
+#     DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+    
+#     last_DNA_complete = os.path.isfile(DNAfile)
+    
+#     if not last_DNA_complete:
+        
+#         print("Waiting on BRGDNA to complete configuration")
+        
+#     DNA_wait = 0
+    
+#     while not last_DNA_complete:
+        
+#         if DNA_wait>=1800:
+            
+#             rescueDNA(sim_properties)
+            
+#             print('Created Rescue Files')
+            
+#             return None
+        
+#         last_DNA_complete = os.path.isfile(DNAfile)
+        
+#         timepy.sleep(10)
+        
+#         DNA_wait = DNA_wait + 10
+        
+#     print("Waited seconds: "+str(DNA_wait))
+        
+#     print("Chromosome configuration ready to load")
+        
+#     return None
+#########################################################################################
+
+# #########################################################################################
+# def writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps):
+#     """
+#     Inputs:
+#     sim_properties - Dictionary of simulation variables and state trackers
+    
+#     Returns:
+#     Called by:
+#     Description:
+#     """
+    
+# #     timestep = int(time/sim_properties['timestep'])
+    
+#     headDir = sim_properties['dna_software_directory']
+#     workDir = sim_properties['working_directory']+'DNA/'
+    
+#     timestep = int(time/sim_properties['timestep'])
+    
+#     rng_number = int(timestep/10000+sim_properties['dna_rng_seed'])
+    
+#     processor_number = 8 #25
+    
+#     loop_number = int(sim_properties['counts']['P_0415']/2)
+    
+#     DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
+    
+#     DnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(timestep)
+    
+#     try:
+#         PrevDnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+#     except:
+#         PrevDnaBinFname = workDir + 'x_chain_Syn3A_chromosome_init_rep00001.bin'
+        
+#     try:
+#         PrevDnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
+#     except:
+#         PrevDnaQuatFname = None
+    
+# #     RiboFname = workDir + 'ribo_obstacles_{:d}.bin'.format(timestep)
+    
+#     MemBoundaryFname = workDir + 'mem_boundary_{:d}.bin'.format(timestep)
+    
+#     DnaXyzFname = workDir + 'dna_monomers_{:d}.xyz'.format(timestep)
+    
+#     DnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(timestep)
+    
+#     with open(DirectivesFname, 'w') as f:
+
+#         f.write('btree_prng_seed:10\n')
+#         f.write('replicator_prng_seed:10\n')
+
+# #         f.write('new_chromo:5000\n')
+#         f.write('input_state:' + workDir + 'rep_state_{:d}.txt\n'.format(sim_properties['last_DNA_step']))
+
+#         f.write('load_BD_lengths:' + sim_properties['head_directory'] + 'input_data/in_BD_lengths_LAMMPS_test.txt\n')
+# #         f.write('load_BD_lengths:/home/zane/in_BD_lengths_LAMMPS_test.txt\n')
+        
+#         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
+        
+#         f.write('load_mono_quats:' + PrevDnaQuatFname + ',row\n')
+        
+#         memFname = workDir + 'mem_boundary_{:d}_1.bin'.format(timestep)
+            
+#         f.write('load_bdry_coords:' + memFname + ',row\n')
+
+# #         f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+            
+#         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
+#         f.write('simulator_set_prng_seed:{:d}\n'.format(rng_number))
+#         f.write('simulator_set_nProc:{:d}\n'.format(processor_number))
+#         f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model\n')
+# #         f.write('simulator_set_output_details:' + workDir + ',chromosome_{:d}\n'.format(timestep))
+#         f.write('simulator_set_output_details:' + workDir + ',chromosome\n'.format(timestep))
+
+#         f.write('simulator_set_delta_t:1.0E+5\n')
+        
+# #         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
+# #         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
+#         f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
+        
+# #         f.write('switch_Ori_bdry_attraction:T\n')
+# #         f.write('switch_Ori_pair_repulsion:T\n')
+
+#         f.write('dump_topology:'+ workDir +'chromo_topo_{:d}.dat,1\n'.format(timestep))
+
+#         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        
+#         f.write('simulator_relax_progressive:1000,500\n')
+        
+#         f.write('sync_simulator_and_system\n')
+        
+#         for i in range(1,bp_grow_steps+1):
+            
+#             memFname = workDir + 'mem_boundary_{:d}_{:d}.bin'.format(timestep,i)
+            
+#             f.write('load_bdry_coords:' + memFname + ',row\n')
+            
+#             f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+# #             sys_write_sim_read_LAMMPS_data_at_timestep:/home/ben/Data/btree_chromo/bdry_particle_expansion/data.5000mono_50ribo_bdry900A
+#             f.write('simulator_expand_bdry_particles:2.0,10,100,10\n')
+#             f.write('sync_simulator_and_system\n')
+#             f.write('simulator_run_hard_FENE:10,5,10,append,skip_first\n')
+#             f.write('sync_simulator_and_system\n')
+        
+# #         f.write('write_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+
+# #         f.write('switch_Ori_pair_repulsion:T\n')
+
+# #         loop_number=20
+        
+# #         f.write('simulator_run_loops:{:d},1000,100,100,append,nofirst\n'.format(loop_number))
+        
+#         f.write('sync_simulator_and_system\n')
+
+# #         f.write('write_mono_xyz:' + DnaXyzFname + '\n')
+        
+#         f.write('write_mono_coords:' + DnaBinFname + ',row\n')
+        
+#         f.write('write_mono_quats:' + DnaQuatFname + ',row\n')
+        
+#         f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
+        
+# #         f.write('write_ribo_coords:' + RiboBinFname + ',row\n')
+    
+#     return DirectivesFname
+# #########################################################################################
+
+
+# #########################################################################################
+# def makeBdryCompressionFiles(time, sim_properties, slice_size=10):
+#     """
+#     Inputs:
+#     sim_properties - Dictionary of simulation variables and state trackers
+    
+#     Returns:
+#     Called by:
+#     Description:
+#     """
+    
+#     print('NEW MEMBRANE SHAPE')
+    
+#     timestep = int(time/sim_properties['timestep'])
+    
+#     workDir = sim_properties['working_directory']+'DNA/'
+    
+#     DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+    
+#     with open(DNAfile,'rb') as f:
+
+#         DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+
+#         DNAcoords = np.divide(DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T,10)
+
+#     zmax = 0
+#     zmin = 0
+
+#     for coord in DNAcoords:
+
+#         if coord[2]>zmax:
+#             zmax = float(coord[2])
+
+#         if coord[2]<zmin:
+#             zmin = float(coord[2])
+
+#         xy_radius = (coord[0]**2 + coord[1]**2)**(1/2)
+
+# #         if xy_radius > DNAxyMax:
+
+# #             DNAxyMax = float(xy_radius)
+
+#     print(zmin,zmax)
+    
+#     gamma_V = str(round_sig(sim_properties['gamma_V'], sig=2))
+
+#     memFname = sim_properties['membrane_directory'] + 'output{:s}_mash4/InnerBM.dat'.format(gamma_V)
+#     memcoords = fdf.readTS2CG(memFname, rescaleFactor=1)
+#     print(len(memcoords))
+
+#     zlow = float(zmin)
+#     zhigh = zlow + slice_size
+#     initial_scaling = 0
+    
+#     while (zhigh<(zmax+slice_size)):
+        
+#         DNAxyMax = 0
+        
+#         for coord in DNAcoords:
+            
+#             if zlow<=coord[2]<=zhigh:
+
+#                 xy_radius = (coord[0]**2 + coord[1]**2)**(0.5)
+
+#                 if xy_radius > DNAxyMax:
+
+#                     DNAxyMax = float(xy_radius)
+                    
+                    
+#         DNAxyMax = DNAxyMax+5+1.7 #+4.25 #Account for size of boundary and DNA particles
+
+#         min_rxy = float(DNAxyMax)
+        
+#         for coord in memcoords:
+            
+#             if zlow<=coord[2]<=zhigh:
+                
+#                 xy_radius = (coord[0]**2 + coord[1]**2)**(0.5)
+
+#                 if xy_radius<min_rxy:
+
+#                     min_rxy = float(xy_radius)
+                    
+#         layer_scaling_factor = DNAxyMax/min_rxy
+                    
+#         initial_scaling = max(initial_scaling, layer_scaling_factor)
+        
+#         zlow = float(zhigh)
+#         zhigh = zhigh + slice_size
+
+                    
+#     max_r = 0            
+#     for coord in memcoords:
+# #         if zlow<coord[2]<zhigh:
+#         xyz_radius = (coord[0]**2 + coord[1]**2 + coord[2]**2)**(0.5)
+#         if xyz_radius > max_r:
+#             max_r = float(xyz_radius)
+                    
+#     print(max_r)
+
+# #     initial_scaling = DNAxyMax/min_rxy
+#     print(initial_scaling)
+#     bp_increase = 5 #4.25 #nm
+#     max_r_scaled = initial_scaling*max_r
+#     max_r_diff = max_r_scaled - max_r
+#     print(max_r_diff)
+#     bp_grow_steps = int(max_r_diff/bp_increase)
+#     scaling = float(initial_scaling)
+#     curr_max_r = float(max_r_scaled)
+#     for i in range(1,bp_grow_steps+1):
+#     #     makeMembrane()
+#         writeMembraneBoundaryFileBdryGrow(memcoords, workDir, timestep, rescale_factor=scaling, rescale_count=i)
+#         if i < bp_grow_steps:
+#             curr_max_r = curr_max_r - bp_increase
+#             scaling = curr_max_r/max_r
+        
+#     memFname = sim_properties['membrane_directory'] + 'output{:s}_mash3/InnerBM.dat'.format(gamma_V)
+#     memcoords = fdf.readTS2CG(memFname, rescaleFactor=1)
+#     print(len(memcoords))
+#     lowResFname = writeMembraneBoundaryFileBdryGrow(memcoords, workDir, timestep, rescale_factor=scaling, rescale_count=0)
+    
+#     sim_properties['DNA_membrane_file'] = lowResFname
+        
+# #     print(curr_max_r)
+# #     print(scaling)
+
+#     return bp_grow_steps
+# #########################################################################################
+
+
+# #########################################################################################
+# def writeMembraneBoundaryFileBdryGrow(memBoundaryCoords, working_directory, timestep, rescale_factor=1, rescale_count=1):
+#     """
+#     Inputs:
+    
+#     Returns:
+#     Called by:
+#     Description:
+#     """
+    
+#     workDir = working_directory
+
+#     # print(memBoundaryCoords)
+#     memBoundaryCoords = np.array(memBoundaryCoords)*10*rescale_factor
+# #     print(memBoundaryCoords.shape)
+
+#     memBoundaryCoords = np.reshape(memBoundaryCoords,(int(len(memBoundaryCoords)),3),order='F')
+# #     print(memBoundaryCoords.shape)
+    
+# #     print(memBoundaryCoords)
+
+#     fname = workDir + 'mem_boundary_{:d}_{:d}.bin'.format(timestep,rescale_count)
+
+#     with open(fname, 'wb') as f:
+
+#         memBoundaryCoords.tofile(f)
+        
+#     return fname
+# #########################################################################################
 
 
 # OldMoveDnaParticlesrRNA
