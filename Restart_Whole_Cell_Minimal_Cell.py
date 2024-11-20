@@ -16,6 +16,8 @@ ap.add_argument("-dsd", "--dnaSoftwareDirectory", default='/home/zane/Software/B
 
 ap.add_argument("-m", "--membrane", type=int, default=1)
 
+ap.add_argument("-wd", "--workingDirectory", default=None)
+
 args = ap.parse_args()
 #########################################################################################
 
@@ -53,10 +55,10 @@ import FileSaving as save
 
 
 #########################################################################################
-if args.wd is None:
+if args.workingDirectory is None:
     headDirectory =  os.getcwd() + '/'
 else:
-    headDirectory = args.wd + '/'
+    headDirectory = args.workingDirectory + '/'
 workingDirectory = headDirectory + 'Data/' + workingDirectoryName + '/'
 sim_properties_file = workingDirectory + 'sim_properties.pkl'
 backup_sim_properties = workingDirectory + 'sim_properties_at_restart.pkl'

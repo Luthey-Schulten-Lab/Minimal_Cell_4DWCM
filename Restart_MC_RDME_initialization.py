@@ -31,7 +31,7 @@ import pickle
 
 
 #########################################################################################
-def initSimRestart(totalTime, sim_properties_file, workingDirectoryName=None, headDirectory):
+def initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDirectory):
     """
     Inputs:
     Returns:
