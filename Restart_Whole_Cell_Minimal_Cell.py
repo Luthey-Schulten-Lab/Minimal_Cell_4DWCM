@@ -53,7 +53,10 @@ import FileSaving as save
 
 
 #########################################################################################
-headDirectory =  os.getcwd() + '/'
+if args.wd is None:
+    headDirectory =  os.getcwd() + '/'
+else:
+    headDirectory = args.wd + '/'
 workingDirectory = headDirectory + 'Data/' + workingDirectoryName + '/'
 sim_properties_file = workingDirectory + 'sim_properties.pkl'
 backup_sim_properties = workingDirectory + 'sim_properties_at_restart.pkl'
@@ -100,7 +103,7 @@ os.system("cp %s %s"% (sim_properties_file, backup_sim_properties))
 
 
 #########################################################################################
-sim, sim_properties = MCRDME.initSimRestart(totalTime, sim_properties_file, workingDirectoryName)
+sim, sim_properties = MCRDME.initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDirectory)
 
 sim_properties['dna_software_directory'] = str(args.dnaSoftwareDirectory)
 

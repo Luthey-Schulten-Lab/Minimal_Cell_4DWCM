@@ -31,7 +31,7 @@ import pickle
 
 
 #########################################################################################
-def initSimRestart(totalTime, sim_properties_file, workingDirectoryName=None):
+def initSimRestart(totalTime, sim_properties_file, workingDirectoryName=None, headDirectory):
     """
     Inputs:
     Returns:
@@ -44,7 +44,7 @@ def initSimRestart(totalTime, sim_properties_file, workingDirectoryName=None):
     with open(sim_properties_file, 'rb') as handle:
         sim_properties = pickle.load(handle)
         
-    headDirectory =  os.getcwd() + '/'
+#     headDirectory =  os.getcwd() + '/'
     
     sim_properties['head_directory'] = headDirectory
     

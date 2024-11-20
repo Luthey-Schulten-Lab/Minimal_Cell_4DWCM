@@ -32,7 +32,7 @@ import Rxns_RDME
 
 
 #########################################################################################
-def initSim(hook_step, write_step, totalTime, workingDirectoryName):
+def initSim(hook_step, write_step, totalTime, workingDirectoryName, headDirectory):
     """
     Inputs:
     
@@ -45,7 +45,7 @@ def initSim(hook_step, write_step, totalTime, workingDirectoryName):
     
     sim_properties = {}
     
-    headDirectory =  os.getcwd() + '/'
+#     headDirectory =  os.getcwd() + '/'
     
     sim_properties['head_directory'] = headDirectory
 

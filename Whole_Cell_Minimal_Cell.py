@@ -1,6 +1,8 @@
 
 import argparse
 
+import os
+
 #########################################################################################
 ap = argparse.ArgumentParser()
 
@@ -15,6 +17,8 @@ ap.add_argument("-dsd", "--dnaSoftwareDirectory", default='/home/zane/Software/B
 
 ap.add_argument("-m", "--membrane", type=int, default=1)
 
+ap.add_argument("-wd", "--workingDirectory", default=None)
+
 args = ap.parse_args()
 #########################################################################################
 
@@ -24,6 +28,10 @@ hook_step = int(250) #steps
 write_step = int(20000) #steps
 totalTime = args.simTime #s
 workingDirectoryName = args.outputDir
+if args.wd is None:
+    headDirectory =  os.getcwd() + '/'
+else:
+    headDirectory = args.wd + '/'
 #########################################################################################
 
 
@@ -37,7 +45,7 @@ import lm
 from lm import IntMpdRdmeSolver
 # from lm import MGPUIntMpdRdmeSolver
 
-import MC_RDME_initialization as initialization
+# import MC_RDME_initialization as initialization
 
 import RegionsAndComplexes as InitGeom
 
@@ -52,7 +60,7 @@ import FileSaving as save
 
 
 #########################################################################################
-sim, sim_properties = initialization.initSim(hook_step, write_step, totalTime, workingDirectoryName)
+sim, sim_properties = MCRDME.initSim(hook_step, write_step, totalTime, workingDirectoryName, headDirectory)
 
 save.saveSimArgs(sim_properties, args)
 
@@ -92,9 +100,9 @@ save.saveCountsAndFluxes(0, sim_properties, None, None, None)
 #########################################################################################
 import Hook
 
-divisionSolver = Hook.MyOwnSolver
+mc4dSolver = Hook.MyOwnSolver
 
-Solver = makeSolver(IntMpdRdmeSolver, divisionSolver)
+Solver = makeSolver(IntMpdRdmeSolver, mc4dSolver)
 solver = Solver(sim, sim_properties, region_dict, ribo_site_dict)
 
 sim.finalize()
