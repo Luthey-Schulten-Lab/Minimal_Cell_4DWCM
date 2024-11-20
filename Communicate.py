@@ -1073,7 +1073,10 @@ def updateSA(sim_properties):
             ]
 
             # Solve for cutoff and radius using initial guesses
-            result = fsolve(division_equations, [0, sim_properties['cyto_radius_nm']])
+            if 'divH' not in sim_properties.keys():
+                result = fsolve(division_equations, [0, sim_properties['cyto_radius_nm']])
+            else:
+                result = fsolve(division_equations, [sim_properties['divH'], sim_properties['divR']])
             sim_properties['divH'], sim_properties['divR'] = result[0], result[1]  # store the results; units are m
             print(sim_properties['divH'], sim_properties['divR'])
 
