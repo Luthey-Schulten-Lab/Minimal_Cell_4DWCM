@@ -1062,14 +1062,16 @@ def updateSA(sim_properties):
             # Calculate R and H based on equations for SA and V, of overlapping spheres minus inner caps
             # The equations below are for the SA and V of the *total* cell shape (include both sides of the dividing cell)
 
-            volume_equation = lambda cutoff, radius: (
-                                                                 4 / 3) * np.pi * radius ** 3 + 2 * np.pi * cutoff * radius ** 2 - (
-                                                                 2 * np.pi / 3) * cutoff ** 3
+            volume_equation = lambda cutoff, radius: ((4 / 3) * np.pi * radius ** 3
+                                                      + 2 * np.pi * cutoff * radius ** 2
+                                                      - (2 * np.pi / 3) * cutoff ** 3)
+
             surface_area_equation = lambda cutoff, radius: 4 * np.pi * radius * (cutoff + radius)
 
+            # Define the system of equations, scaling from meters to nanometers to enhance numerical stability for fsolve
             division_equations = lambda f: [
-                volume_equation(f[0], f[1]) - sim_properties['volume'],
-                surface_area_equation(f[0], f[1]) - sim_properties['SA']
+                volume_equation(f[0] * 1e9, f[1] * 1e9) - sim_properties['volume'] * 1e27,
+                surface_area_equation(f[0] * 1e9, f[1] * 1e9) - sim_properties['SA'] * 1e18
             ]
 
             # Solve for cutoff and radius using initial guesses
