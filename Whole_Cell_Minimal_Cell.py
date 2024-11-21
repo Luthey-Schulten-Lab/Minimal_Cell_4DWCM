@@ -28,10 +28,10 @@ hook_step = int(250) #steps
 write_step = int(20000) #steps
 totalTime = args.simTime #s
 workingDirectoryName = args.outputDir
-if args.wd is None:
+if args.workingDirectory is None:
     headDirectory =  os.getcwd() + '/'
 else:
-    headDirectory = args.wd + '/'
+    headDirectory = args.workingDirectory + '/'
 #########################################################################################
 
 
