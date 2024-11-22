@@ -22,6 +22,7 @@ from LatticeFunctions import *
 from scipy.optimize import fsolve
 from scipy.optimize import least_squares
 
+import MC_CME as MCCME
 
 #########################################################################################
 def updateCountsRDME(RDMEsim, sim_properties, lattice):
