@@ -127,9 +127,9 @@ def updateChromosomeDivision(time, lattice, sim_properties, region_dict, ribo_si
         
 #         DirectivesFname = writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps)
 
-        DirectivesFname = writeDivisionChromosomeInputFile(time, sim_properties)
+        writeDivisionChromosomeInputFile(time, sim_properties)
 
-        runDivChromosome(sim_properties, DirectivesFname)
+        runDivChromosome(time, sim_properties)
     
         timestep = int(time/sim_properties['timestep'])
     
@@ -620,8 +620,8 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
             f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
             
         if sim_properties['division_started']:
-            cyto_radius_angstroms = int((sim_properties['divR'] * (1e9)) * 10)
-            cyto_height_angstroms = int((sim_properties['divH'] * (1e9)) * 10)
+            cyto_radius_angstroms = int((sim_properties['divR']) * 10)
+            cyto_height_angstroms = int((sim_properties['divH']) * 10)
             f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(cyto_height_angstroms, cyto_radius_angstroms))
 
 #         if (sim_properties['gamma_V'] == 1.0) and sim_properties['division_started']:
@@ -1040,7 +1040,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
             
         # Create the division cell shape
-        f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10)))
             
         # Set simulator parameters and paths
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
@@ -1062,9 +1062,50 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
 
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
-        # Minimize the system
+        # Minimize in previous division shape
         f.write('simulator_relax_progressive:1000,500\n')
         
+        f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
+        
+        f.write('sync_simulator_and_system\n')
+        
+        # Calculate change in membrane shape
+        bead_size = 3.4
+        
+        divHdiff = sim_properties['divH'] - sim_properties['divH_Prev']
+        divRdiff = sim_properties['divR'] - sim_properties['divR_Prev']
+        
+        #Progressively change membrane shape to new geometry
+        if divHdiff>bead_size or divRdiff>bead_size:
+            
+            Hsteps = int(divHdiff/bead_size+1)
+            Rsteps = int(divRdiff/bead_size+1)
+            
+            div_steps = max(Hsteps,Rsteps)
+            
+            Hdelt = divHdiff/div_steps
+            Rdelt = divRdiff/div_steps
+            
+            for i in range(int(div_steps)):
+            
+                divHA = int((sim_properties['divH_Prev'] + (i+1)*Hdelt)*10)
+                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10)
+
+                f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
+                f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+                f.write('simulator_relax_progressive:1000,500\n')
+                f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
+                f.write('sync_simulator_and_system\n')
+            
+        
+        # Minimize in the new division shape
+        divHA = int(sim_properties['divH']*10)
+        divRA = int(sim_properties['divR']*10)
+
+        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
+        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        f.write('simulator_relax_progressive:1000,500\n')
+        f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
         f.write('sync_simulator_and_system\n')
         
         # Run some BD steps so that the minimized chromosome state is recorded
@@ -1084,13 +1125,15 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
 
 
 #########################################################################################
-def runDivChromosome(sim_properties, DirectivesFname):
+def runDivChromosome(time, sim_properties):
     """
     Inputs:
     Returns:
     Called by:
     Description:
     """
+    
+    timestep = int(time/sim_properties['timestep'])
     
 #     timestep = sim_properties['timestep']
     
@@ -1100,6 +1143,8 @@ def runDivChromosome(sim_properties, DirectivesFname):
     workDir = sim_properties['working_directory']+'DNA/'
     
 #     DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
+
+    DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
     
     DNA_executable = headDir + 'btree_chromo/build/apps/btree_chromo ' + DirectivesFname
     print(DNA_executable)

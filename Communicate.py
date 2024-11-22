@@ -20,6 +20,7 @@ import time as timepy
 from LatticeFunctions import *
 
 from scipy.optimize import fsolve
+from scipy.optimize import least_squares
 
 
 #########################################################################################
@@ -1036,6 +1037,10 @@ def updateSA(sim_properties):
     if cyto_radius_nm_equivalent_sphere > double_V_radius:
         
         sim_properties['division_started'] = True
+        
+        if ('nextDivSA' not in sim_properties.keys()):
+            
+            sim_properties['nextDivSA'] = sim_properties['SA'] - 1e-16
     
 #     cyto_radius = int(round(cyto_radius_nm/sim_properties['lattice_spacing']))
     cyto_radius = int(cyto_radius_nm/sim_properties['lattice_spacing'])
@@ -1048,38 +1053,49 @@ def updateSA(sim_properties):
 
     if sim_properties['division_started']:
 
-        gamma_V = round_sig(sim_properties['volume'] / ((4 / 3) * np.pi * (cyto_radius_nm_equivalent_sphere) ** 3),
-                            sig=4)
+#         gamma_V = round_sig(sim_properties['volume'] / ((4 / 3) * np.pi * (cyto_radius_nm_equivalent_sphere) ** 3),
+#                             sig=4)
 
-        print('Gamma V: ', gamma_V)
+#         print('Gamma V: ', gamma_V)
 
-        if gamma_V <= sim_properties['next_gamma_V']:
+        if (sim_properties['SA'] >= sim_properties['nextDivSA']):
+            
+            sim_properties['nextDivSA'] = sim_properties['SA'] + 5.0e-15
 
-            sim_properties['gamma_V'] = round_sig(sim_properties['next_gamma_V'], sig=2)
+#             sim_properties['gamma_V'] = round_sig(sim_properties['next_gamma_V'], sig=2)
 
-            sim_properties['next_gamma_V'] = sim_properties['next_gamma_V'] - 0.01
+#             sim_properties['next_gamma_V'] = sim_properties['next_gamma_V'] - 0.01
 
             # Calculate R and H based on equations for SA and V, of overlapping spheres minus inner caps
             # The equations below are for the SA and V of the *total* cell shape (include both sides of the dividing cell)
 
             volume_equation = lambda cutoff, radius: ((4 / 3) * np.pi * radius ** 3
-                                                      + 2 * np.pi * cutoff * radius ** 2
-                                                      - (2 * np.pi / 3) * cutoff ** 3)
+                                                          + 2 * np.pi * cutoff * radius ** 2
+                                                          - (2 * np.pi / 3) * cutoff ** 3)
 
             surface_area_equation = lambda cutoff, radius: 4 * np.pi * radius * (cutoff + radius)
 
+            cellV_nm = sim_properties['volume'] * 1e27
+            cellSA_nm = sim_properties['SA'] * 1e18
             # Define the system of equations, scaling from meters to nanometers to enhance numerical stability for fsolve
             division_equations = lambda f: [
-                volume_equation(f[0] * 1e9, f[1] * 1e9) - sim_properties['volume'] * 1e27,
-                surface_area_equation(f[0] * 1e9, f[1] * 1e9) - sim_properties['SA'] * 1e18
+                volume_equation(f[0], f[1]) - cellV_nm,
+                surface_area_equation(f[0], f[1]) - cellSA_nm
             ]
 
             # Solve for cutoff and radius using initial guesses
             if 'divH' not in sim_properties.keys():
-                result = fsolve(division_equations, [0, sim_properties['cyto_radius_nm']])
+                print('Creating Div')
+                result = least_squares(division_equations, [0, sim_properties['cyto_radius_nm']*1e9],  bounds=[0,300])
+                sim_properties['divH_Prev'], sim_properties['divR_Prev'] = 0, sim_properties['cyto_radius_nm']*1e9
+                
+        #         print(result)
             else:
-                result = fsolve(division_equations, [sim_properties['divH'], sim_properties['divR']])
-            sim_properties['divH'], sim_properties['divR'] = result[0], result[1]  # store the results; units are m
+                result = least_squares(division_equations, [sim_properties['divH'], sim_properties['divR']], bounds=[0,300])
+                sim_properties['divH_Prev'], sim_properties['divR_Prev'] = float(sim_properties['divH']), float(sim_properties['divR'])
+        #         print(result)
+
+            sim_properties['divH'], sim_properties['divR'] = result['x'][0], result['x'][1]  # store the results; units are m
             print(sim_properties['divH'], sim_properties['divR'])
 
             updateRegions = True

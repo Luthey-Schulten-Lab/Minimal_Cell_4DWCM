@@ -151,13 +151,13 @@ class MyOwnSolver:
 
                         print('REPLICATION STARTED')
                         
-#                 if self.sim_properties['division_started'] and updateRegions:
+                if self.sim_properties['division_started'] and updateRegions:
                     
-#                     region_dict, DNA_lattice_coords, genome = DNA.updateChromosomeDivision(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict)
+                    region_dict, DNA_lattice_coords, genome = DNA.updateChromosomeDivision(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict)
                     
-#                 else:
+                else:
 
-                region_dict, DNA_lattice_coords, genome = DNA.updateChromosome(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict, updateRegions)
+                    region_dict, DNA_lattice_coords, genome = DNA.updateChromosome(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict, updateRegions)
 
                 self.region_dict = region_dict
 

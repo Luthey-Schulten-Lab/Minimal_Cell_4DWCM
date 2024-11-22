@@ -250,8 +250,8 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
 
     build = RegionBuilder(RDMEsim)
 
-    new_height = sim_properties['divH'] / sim_properties['lattice_spacing']  # in units of number of cubes
-    new_radius = sim_properties['divR'] / sim_properties['lattice_spacing']  # in units of number of cubes
+    new_height = sim_properties['divH']*1e-9 / sim_properties['lattice_spacing']  # in units of number of cubes
+    new_radius = sim_properties['divR']*1e-9 / sim_properties['lattice_spacing']  # in units of number of cubes
     print(new_height, new_radius)
 
     cell1_center = [sim_center[0], sim_center[1], sim_center[2] - np.rint(new_height)]

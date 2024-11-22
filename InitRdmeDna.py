@@ -60,7 +60,7 @@ def runNewChromosome(sim_properties):
     
     log_fname = sim_properties['working_directory'] + 'log_init.log'
     
-    DNA_executable = sim_properties['dna_software_directory'] + 'sc_chain_generation/fortran/gen_sc_chain.exe --i_f=%s --o_d=%s --o_l=%s --s=10 --l=%s --n_t=8 --bin --xyz' % (input_fname, sim_properties['working_directory']+'DNA/', 'Syn3A_chromosome_init', log_fname)
+    DNA_executable = sim_properties['dna_software_directory'] + 'sc_chain_generation/fortran/gen_sc_chain --i_f=%s --o_d=%s --o_l=%s --s=10 --l=%s --n_t=8 --bin --xyz' % (input_fname, sim_properties['working_directory']+'DNA/', 'Syn3A_chromosome_init', log_fname)
     print(DNA_executable)
     
     os.system(DNA_executable)
