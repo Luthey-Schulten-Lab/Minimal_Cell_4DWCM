@@ -1108,9 +1108,18 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
         f.write('sync_simulator_and_system\n')
         
+        # Run looping
+        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        
+        f.write('switch_fork_partition_repulsion:T\n')
+        f.write('simulator_run_loops:{:d},10000,10000,10000,append,skip_first\n'.format(loop_number))
+        
+        f.write('sync_simulator_and_system\n')
+        
         # Run some BD steps so that the minimized chromosome state is recorded
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
+        f.write('simulator_minimize_soft_harmonic:500\n')
         f.write('simulator_run_topoDNA_FENE:1000,500,500,append,skip_first\n')
     
         f.write('sync_simulator_and_system\n')
