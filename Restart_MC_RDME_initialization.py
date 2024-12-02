@@ -136,8 +136,8 @@ def buildRegionsRestart(sim, sim_properties):
 #     cyto_dilation = build.dilate(cytoplasm, se = build.se26)
 #     cyto_shell = cyto_dilation & ~cytoplasm
     
-    region_dict['outer_cytoplasm']['full_shape'] = sim_properties['working_directory'] + 'restart_files/outer_cytoplasm_full.npy'
-    region_dict['cytoplasm']['full_shape'] = sim_properties['working_directory'] + 'restart_files/cytoplasm_full.npy'
+    region_dict['outer_cytoplasm']['full_shape'] = np.load(sim_properties['working_directory'] + 'restart_files/outer_cytoplasm_full.npy')
+    region_dict['cytoplasm']['full_shape'] = np.load(sim_properties['working_directory'] + 'restart_files/cytoplasm_full.npy')
     
         
     ribo_types = ['ribos'] #,'starts','mids','ends']
