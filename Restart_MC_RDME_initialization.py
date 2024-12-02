@@ -131,14 +131,13 @@ def buildRegionsRestart(sim, sim_properties):
         
         regionIdx = regionIdx + 1
         
-        
-    cytoplasm = build.ellipsoid(radius = sim_properties['cyto_radius'], center = sim_properties['lattice_center'])
+#     cytoplasm = build.ellipsoid(radius = sim_properties['cyto_radius'], center = sim_properties['lattice_center'])
 
-    cyto_dilation = build.dilate(cytoplasm, se = build.se26)
-    cyto_shell = cyto_dilation & ~cytoplasm
+#     cyto_dilation = build.dilate(cytoplasm, se = build.se26)
+#     cyto_shell = cyto_dilation & ~cytoplasm
     
-    region_dict['outer_cytoplasm']['full_shape'] = cyto_shell
-    region_dict['cytoplasm']['full_shape'] = cytoplasm
+    region_dict['outer_cytoplasm']['full_shape'] = sim_properties['working_directory'] + 'restart_files/outer_cytoplasm_full.npy'
+    region_dict['cytoplasm']['full_shape'] = sim_properties['working_directory'] + 'restart_files/cytoplasm_full.npy'
     
         
     ribo_types = ['ribos'] #,'starts','mids','ends']
