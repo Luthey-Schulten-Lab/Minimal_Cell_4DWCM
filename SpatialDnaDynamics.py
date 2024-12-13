@@ -182,7 +182,7 @@ def checkLastChromosome(sim_properties):
     
     while not last_DNA_complete:
         
-        if DNA_wait>=900:
+        if DNA_wait>=300:
             
             rescueDNA(sim_properties)
             
@@ -686,7 +686,11 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
             f.write('switch_fork_partition_repulsion:T\n')
             f.write('simulator_run_loops:{:d},10000,10000,10000,noappend,first\n'.format(loop_number))
         else:
-            f.write('switch_fork_partition_repulsion:T\n')
+            if not checkDaughtersFullyPartitioned(sim_properties):
+                print('DNA not fully partitioned yet; running loops with fork partition force ON')
+                f.write('switch_fork_partition_repulsion:T\n')
+            else:
+                print('DNA is fully partitioned; running loops with fork partition force OFF')
             f.write('simulator_run_loops:{:d},10000,10000,10000,append,skip_first\n'.format(loop_number))
         
 #         f.write('repeat:2\n')
@@ -695,16 +699,16 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
 #         f.write('simulator_run_soft_FENE:20000,10000,10000,append,skip_first\n')
         f.write('sync_simulator_and_system\n')
     
-        if not updateRegions:
-            f.write('load_ribo_coords:' + RiboFname + ',row\n')
+        #if not updateRegions:
+        #    f.write('load_ribo_coords:' + RiboFname + ',row\n')
         
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        #f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
         
-        f.write('simulator_minimize_soft_harmonic:500\n')
+        #f.write('simulator_minimize_soft_harmonic:500\n')
         
-        f.write('simulator_run_topoDNA_FENE:100,50,50,append,skip_first\n')
+        #f.write('simulator_run_topoDNA_FENE:100,50,50,append,skip_first\n')
     
-        f.write('sync_simulator_and_system\n')
+        #f.write('sync_simulator_and_system\n')
     
         f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
         
@@ -1110,8 +1114,9 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         
         # Run looping
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        
-        f.write('switch_fork_partition_repulsion:T\n')
+
+        if not checkDaughtersFullyPartitioned(sim_properties):
+            f.write('switch_fork_partition_repulsion:T\n')
         f.write('simulator_run_loops:{:d},10000,10000,10000,append,skip_first\n'.format(loop_number))
         
         f.write('sync_simulator_and_system\n')
@@ -1261,6 +1266,46 @@ def rotateChromosome(time, sim_properties):
         
     return None
         
+#########################################################################################
+
+
+#########################################################################################
+def checkDaughtersFullyPartitioned(sim_properties):
+    print('Checking DNA Spatial Partitioning Status')
+
+    workDir = sim_properties['working_directory'] + 'DNA/'
+    DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+
+    # Read in monomer coordinates
+    with open(DNAfile, 'rb') as f:
+        DNAbin = np.fromfile(f, dtype=np.float64, count=-1)
+
+    DNAcoords = DNAbin.reshape((3, DNAbin.shape[0] // 3), order='F').T
+
+    # Read replication state topology
+    RepTopoFname = workDir + 'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    with open(RepTopoFname, 'r') as repTopoFile:
+        lines = repTopoFile.readlines()
+
+    if len(lines) <= 2:
+        return False
+
+    daughterIdxs = lines[2].split('\n')[0].split(',')
+    leftArmPoint = int(daughterIdxs[2])
+    rightArmPoint = int(daughterIdxs[4])
+
+    # Separate coordinates for the two daughter chromosomes
+    daughterA = DNAcoords[:leftArmPoint-1]
+    daughterB = DNAcoords[leftArmPoint-1:rightArmPoint]
+
+    # Check z-coordinates for partitioning
+    daughterA_z = daughterA[:, 2]
+    daughterB_z = daughterB[:, 2]
+
+    condition1 = np.all(daughterA_z < 0) and np.all(daughterB_z > 0)
+    condition2 = np.all(daughterA_z > 0) and np.all(daughterB_z < 0)
+
+    return condition1 or condition2
 #########################################################################################
 
 
