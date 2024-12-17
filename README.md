@@ -42,6 +42,10 @@ Example executable:
 python Whole_Cell_Minimal_Cell.py -od replicate1 -t 1200 -cd 1 -drs 13 -dsd /home/zane/Software/
 ```
 
+## Restarting a simulation
+
+If you want to run more time for a simulation or you need to restart a simulations because of a crash, you can run the available restart python script.
+
 ## Descriptions of Simulation Files
 
 | File Name | Description |
