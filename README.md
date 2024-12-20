@@ -28,8 +28,8 @@ Once your environment is ready, you can now run the model.
 
 The python file ```Whole_Cell_Minimal_Cell.py``` is the main executable for the model. The executable has the following user input variables:
 
-| Variable | Shorthand | Description |
-|----------|-----------|-------------|
+|  Variable  | Shorthand | Description |
+|------------|-----------|-------------|
 | --outputDir | -od | Name of directory that will be created to store trajectory files. DO NOT INCLUDE A '.' |
 | --simTime | -t | Amount of biological time to be simulated in units of seconds. |
 | --cudeDevices | -cd | Integer index of the GPU to use for the Lattice Microbes RDME solver. |
@@ -71,9 +71,9 @@ The ```simTime``` variable is how much more biological time you want to run. If 
 | ``` MC_CME.py ``` | Creates and runs the global CME simulation for tRNA charging and transcription. |
 | ``` MC_RDME_initialization.py ``` | Initializes RDME simulation including site types and reactions. |
 | ``` RegionsAndComplexes.py ``` | Initializes shapes of cell regions (e.g. membrane and cytoplasm) onto the RDME lattice. |
-|```Restart_Hook.py```| Modified version of ```Hook.py``` that is used for simulations that have been restarted. |
-|```Restart_MC_RDME_initialization.py```| Constructs a whole-cell simulation from the last recorded cell state of a preexisting simulation. |
-|```Restart_Whole_Cell_Minimal_Cell.py```| Executable for restarting simulations. |
+| ```Restart_Hook.py``` | Modified version of ```Hook.py``` that is used for simulations that have been restarted. |
+| ```Restart_MC_RDME_initialization.py``` | Constructs a whole-cell simulation from the last recorded cell state of a preexisting simulation. |
+| ```Restart_Whole_Cell_Minimal_Cell.py``` | Executable for restarting simulations. |
 | ``` RibosomesRDME.py ``` | Updates excluded volume of ribosomes so that the ribosomes lattice sites follow the center of mass particle. |
 | ``` Run_CME.py ``` | Executable file for global CME. |
 | ``` Rxns_CME.py ``` | Defines set of reactions simulated in the global CME. |
