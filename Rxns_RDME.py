@@ -229,11 +229,11 @@ def replicationInitiation(sim, sim_properties, restart=False):
     sim.region('DNA').addReaction([ori_HA, DnaA], [ori_LA1], sim.rc.dnaa_ds_la)
     sim.region('DNA').addReaction([ori_LA1, DnaA], [ori_LA2], sim.rc.dnaa_ds_la)
     
-#     ssDNA_on_rate = 100*1000 #M-1 s-1
-#     ssDNA_off_rate = 0.55 #s-1
+    ssDNA_on_rate = 100*1000 #M-1 s-1
+    ssDNA_off_rate = 0.55 #s-1
 
-    ssDNA_on_rate = 140*1000 #M-1 s-1
-    ssDNA_off_rate = 0.42 #s-1
+    #ssDNA_on_rate = 140*1000 #M-1 s-1
+    #ssDNA_off_rate = 0.42 #s-1
     
     sim.rateConst('dnaa_ss_on', ssDNA_on_rate, 2)
     sim.rateConst('dnaa_ss_off', ssDNA_off_rate, 1)  
@@ -258,13 +258,15 @@ def replicationInitiation(sim, sim_properties, restart=False):
         sim.region('DNA').addReaction([ssDNAunbound, DnaA], [ssDNAbound], sim.rc.dnaa_ss_on)
         sim.region('DNA').addReaction([ssDNAbound], [ssDNAunbound, DnaA], sim.rc.dnaa_ss_off)
         
-    replisome = sim.species('replisome')
+    replisome_particle = sim.species('replisome')
     
-    sim.distributeNumber(replisome, sim.region('cytoplasm'), int(16))
+    #sim.distributeNumber(replisome, sim.region('cytoplasm'), int(16))
     
-    Diff.proteinDiffusionCyto(sim, 'replisome')
+    #Diff.proteinDiffusionCyto(sim, 'replisome')
+
+    replisome = sim.species('P_0128')
         
-    for i in range(15, 31):
+    for i in range(20, 31):
         
         ssDNAbound = sim.species('ori_ss_DnaA_'+str(i))
         
