@@ -915,7 +915,7 @@ def checkRepInitState(sim_properties):
     Description:
     """
     
-    for i in range(15, 31):
+    for i in range(20, 31):
         
         repBound = 'ori_rep2_DnaA_'+str(i)
         

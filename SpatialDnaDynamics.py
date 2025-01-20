@@ -617,10 +617,10 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
 #         if not sim_properties['division_started']:
             
         if not sim_properties['division_started']:
-            f.write('spherical_bdry:{:d},0,0,0\n'.format(cyto_radius_angstroms))
+            f.write('spherical_bdry:{:d},0,0,0\n'.format(int(cyto_radius_angstroms - sim_properties['lattice_spacing']*10)))
             
         if sim_properties['division_started']:
-            cyto_radius_angstroms = int((sim_properties['divR']) * 10)
+            cyto_radius_angstroms = int((sim_properties['divR']) * 10 - sim_properties['lattice_spacing']*10)
             cyto_height_angstroms = int((sim_properties['divH']) * 10)
             f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(cyto_height_angstroms, cyto_radius_angstroms))
 
@@ -1044,7 +1044,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
             
         # Create the division cell shape
-        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10)))
+        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10 - sim_properties['lattice_spacing']*10)))
             
         # Set simulator parameters and paths
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
@@ -1093,7 +1093,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
             for i in range(int(div_steps)):
             
                 divHA = int((sim_properties['divH_Prev'] + (i+1)*Hdelt)*10)
-                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10)
+                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - sim_properties['lattice_spacing']*10)
 
                 f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
                 f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
@@ -1104,7 +1104,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         
         # Minimize in the new division shape
         divHA = int(sim_properties['divH']*10)
-        divRA = int(sim_properties['divR']*10)
+        divRA = int(sim_properties['divR']*10 - sim_properties['lattice_spacing']*10)
 
         f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
@@ -1349,6 +1349,294 @@ def rescueDNA(sim_properties):
     os.system('cp ' + oldChromoTopo + ' ' + rescueChromoTopo)
     
     return None
+#########################################################################################
+
+
+#########################################################################################
+def FIXpartitionChromosomes(DNAcoords, memcoords, neck_position, softwareDirectory, working_directory, timestep, slice_size):
+#     partitionChromosomes(memcoords, neck_position)
+    
+    print('PARTITIONING CHROMSOMES')
+    print(neck_position)
+
+#     DNAfile = working_directory + 'dna_monomers_{:d}.bin'.format(int(timestep-1))
+#     with open(DNAfile,'rb') as f:
+
+#         DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+
+#         DNAcoords = np.divide(DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T,10)
+
+    C1 = DNAcoords[:int(DNAcoords.shape[0]/2)]
+    C2 = DNAcoords[int(DNAcoords.shape[0]/2):]
+    
+    C1_CoM = np.average(C1, axis=0)
+    C2_CoM = np.average(C2, axis=0)
+    
+    memcoords_L = []
+    memcoords_R = []
+    
+    for coord in memcoords:
+
+        if coord[2]>neck_position:
+            memcoords_R.append(coord)
+
+        if coord[2]<=neck_position:
+            memcoords_L.append(coord)
+    
+    memcoords_L = np.array(memcoords_L)
+    memcoords_R = np.array(memcoords_R)
+    
+    mL_CoM = np.average(memcoords_L, axis=0)
+    mR_CoM = np.average(memcoords_R, axis=0)
+    
+    C1mL = ((C1_CoM[0] - mL_CoM[0])**2 + (C1_CoM[1] - mL_CoM[1])**2 + (C1_CoM[2] - mL_CoM[2])**2)**(0.5)
+    C1mR = ((C1_CoM[0] - mR_CoM[0])**2 + (C1_CoM[1] - mR_CoM[1])**2 + (C1_CoM[2] - mR_CoM[2])**2)**(0.5)
+    
+    if C1mL<=C1mR:
+        CL = C1
+        CR = C2
+    else:
+        CL = C2
+        CR = C1
+        
+    max_r_CL = 0
+    for coord in CL:
+        r = ((coord[0] - mL_CoM[0])**2 + (coord[1] - mL_CoM[1])**2 + (coord[2] - mL_CoM[2])**2)**(0.5)
+        if r>max_r_CL:
+            max_r_CL = float(r)
+            
+    max_r_CR = 0
+    for coord in CR:
+        r = ((coord[0] - mR_CoM[0])**2 + (coord[1] - mR_CoM[1])**2 + (coord[2] - mR_CoM[2])**2)**(0.5)
+        if r>max_r_CR:
+            max_r_CR = float(r)
+    
+    min_r_mL = float(max_r_CL)
+    for coord in memcoords_L:
+        r = ((coord[0] - mL_CoM[0])**2 + (coord[1] - mL_CoM[1])**2 + (coord[2] - mL_CoM[2])**2)**(0.5)
+        if r<min_r_mL:
+            min_r_mL = float(r)
+            
+    min_r_mR = float(max_r_CR)
+    for coord in memcoords_R:
+        r = ((coord[0] - mR_CoM[0])**2 + (coord[1] - mR_CoM[1])**2 + (coord[2] - mR_CoM[2])**2)**(0.5)
+        if r<min_r_mR:
+            min_r_mR = float(r)
+            
+    # Save chromsome coordinates to separate files        
+    CL_bin = np.reshape(CL.T*10,(int(len(CL)*3)),order='F')
+    CR_bin = np.reshape(CR.T*10,(int(len(CR)*3)),order='F')
+    
+    fnameL = working_directory + 'CL.bin'
+    with open(fnameL, 'wb') as f:
+        CL_bin.tofile(f)
+        
+    fnameR = working_directory + 'CR.bin'
+    with open(fnameR, 'wb') as f:
+        CR_bin.tofile(f)
+    
+
+    # Run C1
+    DirectivesFname = writePartitioningChromosomeInputFile(softwareDirectory, working_directory, 'L', timestep, fnameL, mL_CoM, max_r_CL, min_r_mL)
+    runChromosome(DirectivesFname, softwareDirectory, working_directory)
+    
+    # Run C2
+    DirectivesFname = writePartitioningChromosomeInputFile(softwareDirectory, working_directory, 'R', timestep, fnameR, mR_CoM, max_r_CR, min_r_mR)
+    runChromosome(DirectivesFname, softwareDirectory, working_directory)
+    
+    # Combine results of running individual chromosomes into a single configuration
+    DNAfile = working_directory + 'dna_monomers_L.bin'.format(int(timestep-1))
+    with open(DNAfile,'rb') as f:
+
+        DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+
+        DNAcoordsL = np.divide(DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T,10)
+        
+    DNAfile = working_directory + 'dna_monomers_R.bin'.format(int(timestep-1))
+    with open(DNAfile,'rb') as f:
+
+        DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+
+        DNAcoordsR = np.divide(DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T,10)
+        
+        
+    newDNAcoords = np.concatenate((DNAcoordsL, DNAcoordsR))
+    
+    newDNA_bin = np.reshape(newDNAcoords.T*10,(int(len(newDNAcoords)*3)),order='F')
+    
+    DNAfile = working_directory + 'dna_monomers_{:d}.bin'.format(int(timestep-1))
+    
+    DNAfileCopy = working_directory + 'dna_monomers_{:d}_prepartition.bin'.format(int(timestep-1))
+    
+    try:
+#         os.popen('mv {} {}'.format(DNAfile,DNAfileCopy))
+        os.system('mv {} {}'.format(DNAfile,DNAfileCopy))
+    except:
+        print('Error moving')
+#         print(DNAfile)
+    
+    print(DNAfile)
+    with open(DNAfile, 'wb') as f:
+        newDNA_bin.tofile(f)
+
+    return newDNAcoords
+#########################################################################################
+
+
+#########################################################################################
+def FIXwritePartitioningChromosomeInputFile(softwareDirectory, working_directory, chromoID, timestep, PrevDnaBinFname, mem_CoM, maxR, minR):
+    
+    headDir = softwareDirectory
+    workDir = working_directory
+    
+    DirectivesFname = workDir + 'partitioning_operations_{:d}_{}.inp'.format(timestep, chromoID)
+    
+    DnaBinFname = workDir + 'dna_monomers_{}.bin'.format(chromoID)
+    
+    RiboBinFname = workDir + 'ribosomes_{:d}.bin'.format(timestep)
+    
+#     PrevDnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(int(timestep-1))
+    
+    DnaXyzFname = workDir + 'dna_monomers_{:d}.xyz'.format(timestep)
+    
+#     DnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(timestep)
+    
+#     PrevDnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(int(timestep-1))
+    
+    xcom = mem_CoM[0]*10
+    ycom = mem_CoM[1]*10
+    zcom = mem_CoM[2]*10
+    
+    cell_radius_angstroms = (maxR+4.25)*10
+    minR_A = (minR-4.25)*10
+    
+    with open(DirectivesFname, 'w') as f:
+
+        f.write('btree_prng_seed:10\n')
+        f.write('replicator_prng_seed:10\n')
+
+        f.write('new_chromo:54338\n')
+#         f.write('input_state:' + workDir + 'rep_state.txt\n')
+
+        f.write('load_BD_lengths:' + headDir + 'btree_chromo/test_case/in_BD_lengths_LAMMPS_test.txt\n')
+#         f.write('load_BD_lengths:/home/zane/in_BD_lengths_LAMMPS_test.txt\n')
+        
+        f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
+        
+#         f.write('load_mono_quats:' + PrevDnaQuatFname + ',row\n')
+        
+#         memFname = workDir + 'mem_boundary_{:d}_{:d}.bin'.format(timestep,1)
+        
+#         f.write('load_bdry_coords:' + memFname + ',row\n')
+
+        f.write('spherical_bdry:{:d},{:d},{:d},{:d}\n'.format(int(cell_radius_angstroms), int(xcom), int(ycom), int(zcom)))
+            
+        f.write('prepare_simulator:log_division_4.log\n')
+        f.write('simulator_set_prng_seed:{:d}\n'.format(timestep+69))
+        f.write('simulator_set_nProc:8\n')
+        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model_kk\n')
+        f.write('simulator_set_output_details:' + workDir + ',divFreeDTS_{}\n'.format(chromoID))
+        f.write('simulator_set_delta_t:1.0E+5\n')
+        
+#         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
+#         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
+        f.write('simulator_load_loop_params:/home/zane/Models/brgdna/division_testing/loop_params.txt\n')
+        
+#         f.write('switch_Ori_bdry_attraction:T\n')
+#         f.write('switch_Ori_pair_repulsion:T\n')
+
+        # TURN OFF TWISTING #
+        f.write('switch_twisting_angles:F\n')
+        f.write('switch_ellipsoids:F\n')
+
+        f.write('dump_topology:'+ workDir +'chromo_topo_{}.dat,1\n'.format(chromoID))
+
+        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{}\n'.format(chromoID))
+        
+        f.write('simulator_minimize_soft_harmonic:500\n')
+        
+        f.write('simulator_run_soft_FENE:100,50,50,noappend,first\n')
+        
+        f.write('sync_simulator_and_system\n')
+
+#         f.write('simulator_relax_progressive:1000,500\n')
+    
+#         f.write('simulator_relax_progressive:10000,500\n')
+        
+#         f.write('sync_simulator_and_system\n')
+        
+        while cell_radius_angstroms>minR_A:
+            
+            f.write('spherical_bdry:{:d},{:d},{:d},{:d}\n'.format(int(cell_radius_angstroms), int(xcom), int(ycom), int(zcom)))
+            
+#             f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{}\n'.format(chromoID))
+
+#             f.write('simulator_relax_progressive:1000\n')
+            
+#             f.write('sync_simulator_and_system\n')
+
+#             f.write('simulator_run_hard_FENE:100,50,50,append,nofirst\n')
+            
+#             f.write('simulator_expand_bdry_particles:2.0,10,100,10\n')
+            
+#             f.write('sync_simulator_and_system\n')
+            
+#             f.write('simulator_relax_progressive:500\n')
+            
+#             f.write('sync_simulator_and_system\n')
+            
+#             f.write('simulator_run_hard_FENE:100,50,50,append,nofirst\n')
+            
+#             f.write('sync_simulator_and_system\n')
+
+            f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{}\n'.format(chromoID))
+
+            f.write('sync_simulator_and_system\n')
+        
+            f.write('simulator_relax_progressive:1000,500\n')
+
+            f.write('sync_simulator_and_system\n')
+
+            f.write('simulator_run_hard_FENE:10,5,10,append,nofirst\n')
+    
+            f.write('simulator_expand_bdry_particles:2.0,10,100,10\n')
+        
+            f.write('sync_simulator_and_system\n')
+        
+            f.write('simulator_relax_progressive:1000,500\n')
+
+            f.write('sync_simulator_and_system\n')
+
+            f.write('simulator_run_hard_FENE:10,5,10,append,nofirst\n')
+
+            f.write('sync_simulator_and_system\n')
+            
+            cell_radius_angstroms = cell_radius_angstroms - 4.25*10
+            
+        
+        f.write('simulator_minimize_soft_harmonic:500\n')
+
+        f.write('simulator_run_soft_FENE:100,50,50,append,nofirst\n')
+
+        f.write('sync_simulator_and_system\n')
+        
+#         f.write('simulator_relax_progressive:1000,500\n')
+        
+#         f.write('sync_simulator_and_system\n')
+        
+#         f.write('simulator_run_hard_FENE:10,5,10,append,nofirst\n')
+        
+#         f.write('sync_simulator_and_system\n')
+
+#         f.write('write_mono_xyz:' + DnaXyzFname + '\n')
+        
+        f.write('write_mono_coords:' + DnaBinFname + ',row\n')
+        
+#         f.write('write_mono_quats:' + DnaQuatFname + ',row\n')
+        
+#         f.write('write_ribo_coords:' + RiboBinFname + ',row\n')
+    
+    return DirectivesFname
 #########################################################################################
 
 
