@@ -258,9 +258,9 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
             y = DNAparticle[1]
             z = DNAparticle[2]
             
-            x_lattice = (x*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_x
-            y_lattice = (y*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_y
-            z_lattice = (z*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_z
+            x_lattice = np.ceil((x*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_x
+            y_lattice = np.ceil((y*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_y
+            z_lattice = np.ceil((z*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_z
             
             DNAsites[int(x_lattice),int(y_lattice),int(z_lattice)] = True
             
@@ -289,9 +289,9 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
                     
                     atomic_symbol, x, y, z = line.split()
                     
-                    x_lattice = (float(x)*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_x
-                    y_lattice = (float(y)*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_y
-                    z_lattice = (float(z)*1e-9)//(10*sim_properties['lattice_spacing'])+N_2_z
+                    x_lattice = np.ceil((float(x)*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_x
+                    y_lattice = np.ceil((float(y)*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_y
+                    z_lattice = np.ceil((float(z)*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_z
 
                     DNAsites[int(x_lattice),int(y_lattice),int(z_lattice)] = True
                     
@@ -617,10 +617,10 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
 #         if not sim_properties['division_started']:
             
         if not sim_properties['division_started']:
-            f.write('spherical_bdry:{:d},0,0,0\n'.format(int(cyto_radius_angstroms - sim_properties['lattice_spacing']*10)))
+            f.write('spherical_bdry:{:d},0,0,0\n'.format(int(cyto_radius_angstroms - sim_properties['lattice_spacing']*10/1e-9)))
             
         if sim_properties['division_started']:
-            cyto_radius_angstroms = int((sim_properties['divR']) * 10 - sim_properties['lattice_spacing']*10)
+            cyto_radius_angstroms = int((sim_properties['divR']) * 10 - sim_properties['lattice_spacing']*10/1e-9)
             cyto_height_angstroms = int((sim_properties['divH']) * 10)
             f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(cyto_height_angstroms, cyto_radius_angstroms))
 
@@ -1044,7 +1044,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
             
         # Create the division cell shape
-        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10 - sim_properties['lattice_spacing']*10)))
+        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10 - sim_properties['lattice_spacing']*10/1e-9)))
             
         # Set simulator parameters and paths
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
@@ -1093,7 +1093,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
             for i in range(int(div_steps)):
             
                 divHA = int((sim_properties['divH_Prev'] + (i+1)*Hdelt)*10)
-                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - sim_properties['lattice_spacing']*10)
+                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - sim_properties['lattice_spacing']*10/1e-9)
 
                 f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
                 f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
@@ -1104,7 +1104,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         
         # Minimize in the new division shape
         divHA = int(sim_properties['divH']*10)
-        divRA = int(sim_properties['divR']*10 - sim_properties['lattice_spacing']*10)
+        divRA = int(sim_properties['divR']*10 - sim_properties['lattice_spacing']*10/1e-9)
 
         f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))

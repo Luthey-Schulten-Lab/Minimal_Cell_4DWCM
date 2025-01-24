@@ -84,7 +84,7 @@ def writeChromosomeInputFile(cyto_radius, sim_properties):
     Description:
     """
     
-    cyto_radius_angstroms = cyto_radius*sim_properties['lattice_spacing']*10/1e-9
+    cyto_radius_angstroms = cyto_radius*sim_properties['lattice_spacing']*10/1e-9 - sim_properties['lattice_spacing']*10/1e-9
     
     fname = sim_properties['working_directory']+'DNA/' + 'Syn3A_chromosome_init.inp'
     

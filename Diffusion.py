@@ -197,7 +197,7 @@ def proteinDiffusionPeriph(sim, ptnID):
     
     sim.transitionRate(sim.species(ptnID), sim.region('cytoplasm'), sim.region('outer_cytoplasm'), sim.dc.diffPtn)
     sim.transitionRate(sim.species(ptnID), sim.region('DNA'), sim.region('outer_cytoplasm'), sim.dc.diffPtn)
-    sim.transitionRate(sim.species(ptnID), sim.region('outer_cytoplasm'), sim.region('DNA'), sim.dc.diffPtnDna)
+#     sim.transitionRate(sim.species(ptnID), sim.region('outer_cytoplasm'), sim.region('DNA'), sim.dc.diffPtnDna)
     
     sim.transitionRate(sim.species(ptnID), sim.region('cytoplasm'), sim.region('cytoplasm'), sim.dc.diffPtn)
     sim.transitionRate(sim.species(ptnID), sim.region('DNA'), sim.region('DNA'), sim.dc.diffPtnDna)
@@ -257,7 +257,7 @@ def degradosomeDiffusion(sim, degID):
 
     sim.transitionRate(sim.species(degID), sim.region('ribo_centers'), sim.region('outer_cytoplasm'), sim.dc.diffDeg)
 
-    sim.transitionRate(sim.species(degID), sim.region('outer_cytoplasm'), sim.region('DNA'), sim.dc.diffDeg)
+#     sim.transitionRate(sim.species(degID), sim.region('outer_cytoplasm'), sim.region('DNA'), sim.dc.diffDeg)
     
     sim.transitionRate(sim.species(degID), sim.region('cytoplasm'), sim.region('cytoplasm'), sim.dc.diffPtn)
     sim.transitionRate(sim.species(degID), sim.region('DNA'), sim.region('DNA'), sim.dc.diffPtn)
