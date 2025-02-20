@@ -94,7 +94,8 @@ def RNAP_binding(sim, sim_properties, locusTag):
     
     proxyPromoterStrength = sim_properties['promoters'][locusTag]
     
-    binding_rate = 4*(180/765)*(proxyPromoterStrength/180)*Ecoli_V*avgdr/11400/60
+    binding_rate = 10*(180/765)*(proxyPromoterStrength/180)*Ecoli_V*avgdr/11400/60
+    #4
     
     return binding_rate
 #########################################################################################

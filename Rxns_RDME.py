@@ -38,7 +38,7 @@ def general_reaction_rates(sim):
     sim.rateConst('secY_on', secY_init, 2)
     sim.rateConst('secY_off', 1e-3, 1)
     
-    binding_rate = 4*(180/765)*Ecoli_V*avgdr/11400/60 #/1800/60
+    binding_rate = 10*(180/765)*Ecoli_V*avgdr/11400/60 #/1800/60
     sim.rateConst('RNAP_on', binding_rate, 2)  
     
     sim.rateConst('conversion', 1000000, 1)
@@ -264,7 +264,7 @@ def replicationInitiation(sim, sim_properties, restart=False):
     
     #Diff.proteinDiffusionCyto(sim, 'replisome')
 
-    replisome = sim.species('P_0128')
+    replisome = sim.species('P_0044')
         
     for i in range(20, 31):
         
@@ -552,43 +552,86 @@ def addRNAPassembly(sim, sim_properties):
     beta1 = sim.species('P_0804')
     beta2 = sim.species('P_0803')
     
-    a_b1 = sim.species('RNAP_ab1')
-    a_b2 = sim.species('RNAP_ab2')
-    b1_b2 = sim.species('RNAP_b1b2')
+    aa = sim.species('RNAP_aa')
+    aa_b1 = sim.species('RNAP_aab1')
+#     b1b2 = 
     
     RNAP = sim.species('RNAP')
     
-    Diff.proteinDiffusionCyto(sim, 'RNAP_ab1')
-    Diff.proteinDiffusionCyto(sim, 'RNAP_ab2')
-    Diff.proteinDiffusionCyto(sim, 'RNAP_b1b2')
+    Diff.proteinDiffusionCyto(sim, 'RNAP_aa')
+    Diff.proteinDiffusionCyto(sim, 'RNAP_aab1')
+#     Diff.proteinDiffusionCyto(sim, 'RNAP_b1b2')
     
     ptnAssoc = sim.rateConst('ptnAssoc', 1e7, 2)
     
-    sim.region('cytoplasm').addReaction([alpha, beta1], [a_b1], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([alpha, beta1], [a_b1], ptnAssoc)
-    sim.region('DNA').addReaction([alpha, beta1], [a_b1], ptnAssoc)
+    sim.region('cytoplasm').addReaction([alpha, alpha], [aa], ptnAssoc)
+    sim.region('outer_cytoplasm').addReaction([alpha, alpha], [aa], ptnAssoc)
+    sim.region('DNA').addReaction([alpha, alpha], [aa], ptnAssoc)
     
-    sim.region('cytoplasm').addReaction([alpha, beta2], [a_b2], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([alpha, beta2], [a_b2], ptnAssoc)
-    sim.region('DNA').addReaction([alpha, beta2], [a_b2], ptnAssoc)
+    sim.region('cytoplasm').addReaction([aa, beta1], [aa_b1], ptnAssoc)
+    sim.region('outer_cytoplasm').addReaction([aa, beta1], [aa_b1], ptnAssoc)
+    sim.region('DNA').addReaction([aa, beta1], [aa_b1], ptnAssoc)
     
-    sim.region('cytoplasm').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
-    sim.region('DNA').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
-    
-    sim.region('cytoplasm').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
-    sim.region('DNA').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
-    
-    sim.region('cytoplasm').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
-    sim.region('DNA').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
-    
-    sim.region('cytoplasm').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
-    sim.region('outer_cytoplasm').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
-    sim.region('DNA').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
+    sim.region('cytoplasm').addReaction([aa_b1, beta2], [RNAP], ptnAssoc)
+    sim.region('outer_cytoplasm').addReaction([aa_b1, beta2], [RNAP], ptnAssoc)
+    sim.region('DNA').addReaction([aa_b1, beta2], [RNAP], ptnAssoc)
 
     return None
+#########################################################################################
+
+
+#########################################################################################
+# def SINGLEAaddRNAPassembly(sim, sim_properties):
+#     """
+#     Inputs:
+#     sim_properties - Dictionary of simulation variables and state trackers
+    
+#     Returns:
+#     Called by:
+#     Description:
+#     """
+    
+#     alpha = sim.species('P_0645')
+#     beta1 = sim.species('P_0804')
+#     beta2 = sim.species('P_0803')
+    
+#     a_b1 = sim.species('RNAP_ab1')
+#     a_b2 = sim.species('RNAP_ab2')
+#     b1_b2 = sim.species('RNAP_b1b2')
+    
+#     RNAP = sim.species('RNAP')
+    
+#     Diff.proteinDiffusionCyto(sim, 'RNAP_ab1')
+#     Diff.proteinDiffusionCyto(sim, 'RNAP_ab2')
+#     Diff.proteinDiffusionCyto(sim, 'RNAP_b1b2')
+    
+#     ptnAssoc = sim.rateConst('ptnAssoc', 1e7, 2)
+    
+#     sim.region('cytoplasm').addReaction([alpha, beta1], [a_b1], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([alpha, beta1], [a_b1], ptnAssoc)
+#     sim.region('DNA').addReaction([alpha, beta1], [a_b1], ptnAssoc)
+    
+#     sim.region('cytoplasm').addReaction([alpha, beta2], [a_b2], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([alpha, beta2], [a_b2], ptnAssoc)
+#     sim.region('DNA').addReaction([alpha, beta2], [a_b2], ptnAssoc)
+    
+#     sim.region('cytoplasm').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
+#     sim.region('DNA').addReaction([beta1, beta2], [b1_b2], ptnAssoc)
+    
+#     sim.region('cytoplasm').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
+#     sim.region('DNA').addReaction([alpha, b1_b2], [RNAP], ptnAssoc)
+    
+#     sim.region('cytoplasm').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
+#     sim.region('DNA').addReaction([beta2, a_b1], [RNAP], ptnAssoc)
+    
+#     sim.region('cytoplasm').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
+#     sim.region('outer_cytoplasm').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
+#     sim.region('DNA').addReaction([beta1, a_b2], [RNAP], ptnAssoc)
+
+#     return None
 #########################################################################################
 
     
