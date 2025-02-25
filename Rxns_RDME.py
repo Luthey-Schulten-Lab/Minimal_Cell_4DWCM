@@ -264,7 +264,7 @@ def replicationInitiation(sim, sim_properties, restart=False):
     
     #Diff.proteinDiffusionCyto(sim, 'replisome')
 
-    replisome = sim.species('P_0044')
+    replisome = sim.species('P_0609')
         
     for i in range(20, 31):
         
