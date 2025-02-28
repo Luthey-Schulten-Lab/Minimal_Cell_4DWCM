@@ -54,7 +54,7 @@ def initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDir
         
     simFolder = sim_properties['working_directory']
     
-    restart_time = int(round(self.sim_properties['time']))
+    restart_time = int(round(sim_properties['time']))
     
     filename = simFolder + 'MinCell_restart_{:d}.lm'.format(restart_time)
 
