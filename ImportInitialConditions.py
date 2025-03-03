@@ -456,7 +456,7 @@ def initializePromoterStrengths(sim_properties):
             
         elif locusDict["Type"] == 'rRNA':
             
-            proxyPromoterStrengths[locusTag] = 765*6.8
+            proxyPromoterStrengths[locusTag] = 765*3.7
             
     sim_properties['promoters'] = proxyPromoterStrengths
     
