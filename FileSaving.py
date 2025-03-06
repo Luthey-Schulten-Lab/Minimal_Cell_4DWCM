@@ -155,17 +155,28 @@ def saveODEfluxes(time, sim_properties, odeResults, model, solver):
         fluxDF[np.rint(0)] = fluxList
 
         fluxDF.to_csv(simFolder+'metabolic_fluxes.csv',index=False)
+        
+    fluxes = np.empty((0, len(model.getRxnList())), dtype=float)
 
-    
+    for i in range(odeResults.shape[0]):
+        
+        flux_transient = solv.calcFlux(0, concs[i,:]) # List
+
+        fluxes = np.append(fluxes, [np.asarray(flux_transient)], axis=0)
+        
     resFinal = odeResults[-1,:]
     
     currentFluxes = solver.calcFlux(0, resFinal)
+    print('End Fluxes: ', currentFluxes.shape)
+    
+    averageFluxes = np.mean(fluxes, axis=0)
+    print('Avg Fluxes: ', averageFluxes.shape)
     
     fluxList = []
 
     for indx,rxn in enumerate(model.getRxnList()):
 
-        fluxList.append( (round_sig(currentFluxes[indx], sig=3)) )
+        fluxList.append( (round_sig(averageFluxes[indx], sig=3)) )
 
     fluxDF = pd.read_csv(simFolder+'metabolic_fluxes.csv')
 
@@ -250,14 +261,38 @@ def saveCountsAndFluxes(time, sim_properties, odeResults, model, solver):
         for specID, count in sim_properties['counts'].items():
 
             new_results.append(count)
+            
+        # Create an array to save the average value of the metabolic fluxes over the second
+        fluxes = np.empty((0, len(model.getRxnList())), dtype=float)
+        
+        print(odeResults.shape)
+
+        for i in range(odeResults.shape[0]):
+
+            flux_transient = solver.calcFlux(0, odeResults[i,:]) # List
+
+            fluxes = np.append(fluxes, [np.asarray(flux_transient)], axis=0)
 
         resFinal = odeResults[-1,:]
 
         currentFluxes = solver.calcFlux(0, resFinal)
+        print('End Fluxes: ', len(currentFluxes))
+
+        averageFluxes = np.mean(fluxes, axis=0)
+        print('Avg Fluxes: ', len(averageFluxes))
+#         fluxList = []
+
+#         for indx,rxn in enumerate(model.getRxnList()):
+
+#             fluxList.append( (round_sig(averageFluxes[indx], sig=3)) )
+
+#         resFinal = odeResults[-1,:]
+
+#         currentFluxes = solver.calcFlux(0, resFinal)
 
         for indx,rxn in enumerate(model.getRxnList()):
 
-            new_results.append( (round_sig(currentFluxes[indx], sig=3)) )
+            new_results.append( (round_sig(averageFluxes[indx], sig=3)) )
 
         resultsDF[np.rint(time)] = new_results
 

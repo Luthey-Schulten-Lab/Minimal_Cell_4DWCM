@@ -912,6 +912,12 @@ def getReplicatedSegments(sim_properties):
     repTopoFile = open(RepTopoFname, 'r')
     lines = repTopoFile.readlines()
     
+    # If replication is complete, we do not need to advance the forks any further
+    if sim_properties['counts']['chromosome'] >= 54338*2:
+        return 0,0
+    
+    # If this is the first instance of replication, the topology will not have a line for the daughter
+    # If there is already duaghter information, we use that to determine fork positions
     if len(lines) > 2:
         
         originalIdxs = lines[1].split('\n')[0].split(',')
@@ -933,25 +939,27 @@ def getReplicatedSegments(sim_properties):
     
     cwPointIdx = cwPoint - originalOri
     
-#     print('CW Idx: ', cwPointIdx)
+    print('CW Idx: ', cwPointIdx)
     
     dnasequenceCW = str(genome3A.seq[cwPointIdx+1:cwPointIdx+1+400])
     
-#     print(dnasequenceCW)
-#     print(len(dnasequenceCW))
+    print(dnasequenceCW)
+    print(len(dnasequenceCW))
     
     repCw = int(GIP.ReplicationRate(sim_properties, dnasequenceCW))
     
     ccwPointIdx = ccwPoint + originalOri
     
-#     print('CCW Idx: ', ccwPointIdx)
+    print('CCW Idx: ', ccwPointIdx)
     
     dnasequenceCCW = str(genome3A.seq[ccwPointIdx-400+1:ccwPointIdx+1])
     
-#     print(dnasequenceCCW)
-#     print(len(dnasequenceCCW))
+    print(dnasequenceCCW)
+    print(len(dnasequenceCCW))
     
     repCcw = int(GIP.ReplicationRate(sim_properties, dnasequenceCCW))
+    
+    print(repCw, repCcw)
     
     if (repCw == 0) and (repCcw == 0):
         
@@ -991,6 +999,8 @@ def getReplicatedSegments(sim_properties):
             sim_properties['counts'][costID] = sim_properties['counts'][costID] + baseCount
         
             sim_properties['counts'][costID+'_second'] = sim_properties['counts'][costID+'_second'] + baseCount
+            
+    sim_properties['counts']['ATP_DNArep_cost'] = sim_properties['counts']['ATP_DNArep_cost'] + int(len(dnaCcwReplicated))
         
     sim_properties['counts']['ATP_DNArep_cost_second'] = sim_properties['counts']['ATP_DNArep_cost_second'] + int(len(dnaCcwReplicated))
     
