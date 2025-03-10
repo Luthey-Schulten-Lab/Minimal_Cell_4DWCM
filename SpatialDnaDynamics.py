@@ -1558,8 +1558,9 @@ def writePartitioningChromosomeInputFile(sim_properties, chromoID, PrevDnaBinFna
         
 #         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
 #         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
-        f.write('simulator_load_loop_params:/home/zane/Models/brgdna/division_testing/loop_params.txt\n')
-        
+#         f.write('simulator_load_loop_params:/home/zane/Models/brgdna/division_testing/loop_params.txt\n')
+        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
+
 #         f.write('switch_Ori_bdry_attraction:T\n')
 #         f.write('switch_Ori_pair_repulsion:T\n')
 

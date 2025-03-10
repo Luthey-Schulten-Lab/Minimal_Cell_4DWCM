@@ -273,13 +273,13 @@ def saveCountsAndFluxes(time, sim_properties, odeResults, model, solver):
 
             fluxes = np.append(fluxes, [np.asarray(flux_transient)], axis=0)
 
-        resFinal = odeResults[-1,:]
+#         resFinal = odeResults[-1,:]
 
-        currentFluxes = solver.calcFlux(0, resFinal)
-        print('End Fluxes: ', len(currentFluxes))
+#         currentFluxes = solver.calcFlux(0, resFinal)
+#         print('End Fluxes: ', len(currentFluxes))
 
         averageFluxes = np.mean(fluxes, axis=0)
-        print('Avg Fluxes: ', len(averageFluxes))
+#         print('Avg Fluxes: ', len(averageFluxes))
 #         fluxList = []
 
 #         for indx,rxn in enumerate(model.getRxnList()):
