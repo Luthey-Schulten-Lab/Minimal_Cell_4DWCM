@@ -6,7 +6,7 @@ import os
 ap = argparse.ArgumentParser()
 
 ap.add_argument('-od', '--outputDir', required = True) # output directory name
-ap.add_argument('-t', '--simTime', type=int, required= True) # Simulation Time: in seconds, e.g. 120
+ap.add_argument('-t', '--simTime', type=int, default=None) # Simulation Time: in seconds, e.g. 120
 
 ap.add_argument('-cd', '--cudaDevices', type=int, default=0) # cuda device for simulation
 
@@ -61,8 +61,6 @@ else:
     headDirectory = args.workingDirectory + '/'
 workingDirectory = headDirectory + 'Data/' + workingDirectoryName + '/'
 sim_properties_file = workingDirectory + 'sim_properties.pkl'
-backup_sim_properties = workingDirectory + 'sim_properties_at_restart.pkl'
-os.system("cp %s %s"% (sim_properties_file, backup_sim_properties))
 #########################################################################################
 
 
@@ -105,7 +103,11 @@ os.system("cp %s %s"% (sim_properties_file, backup_sim_properties))
 
 
 #########################################################################################
-sim, sim_properties = MCRDME.initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDirectory)
+sim, sim_properties = MCRDME.initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, totalTime=totalTime)
+
+restart_time = int(round(sim_properties['time']))
+backup_sim_properties = workingDirectory + 'sim_properties_{:d}.pkl'.format(restart_time)
+os.system("cp %s %s"% (sim_properties_file, backup_sim_properties))
 
 sim_properties['dna_software_directory'] = str(args.dnaSoftwareDirectory)
 

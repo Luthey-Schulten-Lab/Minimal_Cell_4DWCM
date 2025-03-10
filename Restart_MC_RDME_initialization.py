@@ -31,7 +31,7 @@ import pickle
 
 
 #########################################################################################
-def initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDirectory):
+def initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, totalTime=None):
     """
     Inputs:
     Returns:
@@ -82,14 +82,21 @@ def initSimRestart(totalTime, sim_properties_file, workingDirectoryName, headDir
                   latticeType='Int')
     
     sim_timestep = 50e-6
+    
+    if totalTime is None:
+        simTime = int(sim_properties['total_time']-sim_properties['time'])
+    else:
+        simTime = totalTime
 
     sim.timestep = sim_properties['timestep']
-    sim.simulationTime=totalTime
+    sim.simulationTime=simTime
     sim.latticeWriteInterval=int(sim_properties['write_interval'])
     sim.speciesWriteInterval=int(sim_properties['write_interval'])
     sim.hookInterval=int(sim_properties['hook_interval'])
     replicates = 1
-    sim_properties['total_time'] = sim_properties['total_time'] + totalTime
+    
+    if (totalTime is not None) and (round(sim_properties['total_time']-sim_properties['time'])==0):
+        sim_properties['total_time'] = sim_properties['total_time'] + totalTime
     
     print('Simulation Initialized')
     
