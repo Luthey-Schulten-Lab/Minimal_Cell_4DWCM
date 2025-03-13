@@ -1352,11 +1352,11 @@ def rescueDNA(sim_properties):
     
     os.system('cp ' + oldDNAFile + ' ' + rescueDNAFile)
     
-    oldQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_last_DNA_step'])
+#     oldQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_last_DNA_step'])
     
-    rescueQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
+#     rescueQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
     
-    os.system('cp ' + oldQuatFile + ' ' + rescueQuatFile)
+#     os.system('cp ' + oldQuatFile + ' ' + rescueQuatFile)
     
     oldRepState = workDir + 'rep_state_{:d}.txt'.format(sim_properties['last_last_DNA_step'])
                                                           
