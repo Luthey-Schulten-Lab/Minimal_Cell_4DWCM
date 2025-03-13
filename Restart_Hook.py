@@ -76,7 +76,7 @@ class MyOwnSolver:
         
         self.ribo_IDs = sim_properties['riboIDs'] #ribo_IDs
         
-        self.sim_properties['last_last_DNA_step'] = None
+        # self.sim_properties['last_last_DNA_step'] = None
         
         try:
             csim_folder=sim_properties['working_directory']+'CME/'
