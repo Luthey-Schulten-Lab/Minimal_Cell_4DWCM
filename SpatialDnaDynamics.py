@@ -1342,7 +1342,8 @@ def rescueDNA(sim_properties):
     """
     
     print('Rescuing Chromosome from Trapped State')
-    
+    print(sim_properties['last_last_DNA_step'])
+
     workDir = sim_properties['working_directory']+'DNA/'
     
     oldDNAFile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_last_DNA_step'])
