@@ -25,9 +25,12 @@ import time as TIME
 import numpy as np
 import os
 
+from datetime import datetime
+
+
 class MyOwnSolver:
     
-    def __init__(self, lmFile, sim_properties, region_dict, ribo_site_dict):
+    def __init__(self, lmFile, sim_properties, region_dict, ribo_site_dict, termination_time=None):
         
         super(MyOwnSolver, self).__init__()
     
@@ -45,7 +48,13 @@ class MyOwnSolver:
         
         self.complete_steps = 0
         
+        self.termination_time = termination_time
         
+        if termination_time is not None:
+            start_dt = datetime.now()
+            start_timestamp = round(start_dt.timestamp())
+            self.start_datetime = datetime.fromtimestamp(int(start_timestamp))
+            self.final_simulation_time = None
 
         self.sim_properties['fluxes'] = None
 
@@ -129,6 +138,26 @@ class MyOwnSolver:
         
 #         if (time >= self.hookStartTime):
         if (time > 0):
+        
+            ##### For jobs running on some machines, there might be a maximum allowed time. #####
+            ##### We terminate the simulation early to prevent recording errors. #####
+            
+            if self.termination_time is not None:
+                
+                current_datetime = datetime.now()
+                
+                elapsed = current_datetime-self.start_datetime
+                elapsed_hours = elapsed.total_seconds()/3600
+                
+                if elapsed_hours>=self.termination_time:
+                    
+                    if self.final_simulation_time is None:
+                        
+                        self.final_simulation_time = self.next_DNA_time + 7.5
+                
+                    if (time >= self.final_simulation_time):
+                        
+                        raise Exception(f"Reached end of allowed simulation time after {elapsed_hours} hours. Solver will terminate without saving.")
             
             ##### Update Chromosome Configuration and Cell Architecture #####
 

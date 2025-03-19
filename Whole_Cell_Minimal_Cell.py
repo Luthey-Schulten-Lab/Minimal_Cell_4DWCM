@@ -19,6 +19,8 @@ ap.add_argument("-m", "--membrane", type=int, default=1)
 
 ap.add_argument("-wd", "--workingDirectory", default=None)
 
+ap.add_argument("-mh", "--maximumHours", type=float, default=None)
+
 args = ap.parse_args()
 #########################################################################################
 
@@ -102,8 +104,10 @@ import Hook
 
 mc4dSolver = Hook.MyOwnSolver
 
+termination_time = args.maximumHours
+
 Solver = makeSolver(IntMpdRdmeSolver, mc4dSolver)
-solver = Solver(sim, sim_properties, region_dict, ribo_site_dict)
+solver = Solver(sim, sim_properties, region_dict, ribo_site_dict, termination_time=termination_time)
 
 sim.finalize()
 
