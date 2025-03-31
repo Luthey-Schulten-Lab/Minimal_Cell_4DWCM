@@ -77,6 +77,8 @@ class MyOwnSolver:
         self.translation_update_step = 8
         self.ribo_step = 0
         
+        self.endLastHook = TIME.time()
+        
         self.region_dict = region_dict
         self.ribo_site_dict = ribo_site_dict
         
@@ -124,9 +126,11 @@ class MyOwnSolver:
         
         time = t
         
-        print(time)
+        print('Current biological time: ', time)
         
         self.sim_properties['time'] = time
+        
+        print('Time between hook steps: ', TIME.time()-self.endLastHook)
         
         ##### Execution of Growth #####
         
@@ -164,6 +168,8 @@ class MyOwnSolver:
             if (time >= self.next_DNA_time):
                 
                 print("Updating SA and Volume")
+                
+                dnastart = TIME.time()
                 
                 updateRegions = communicate.updateSA(self.sim_properties)
 
@@ -212,6 +218,8 @@ class MyOwnSolver:
                     self.region_dict = region_dict
 
                 self.next_DNA_time = self.next_DNA_time + 4.0
+                
+                print('DNA time: ', TIME.time()-dnastart)
 
                 print('Updated cell architecture')
 
@@ -219,6 +227,8 @@ class MyOwnSolver:
             ##### RDME Modification to Update Ribosome Positions and Polysome Structures #####
 
             print("Moving ribosomes")
+            
+            ribostart = TIME.time()
 
             self.ribo_step = self.ribo_step + 1
 
@@ -240,6 +250,8 @@ class MyOwnSolver:
             self.region_dict = region_dict
 
             self.ribo_site_dict = ribo_site_dict
+            
+            print('Ribo time: ', TIME.time()-ribostart)
 
             print("Moved ribosomes")
 
@@ -247,6 +259,8 @@ class MyOwnSolver:
             ##### Cell-wide (Global) CME for Well-Stirred Stochastic Reactions #####
 
             if (time >= self.next_gCME_time):
+                
+                cmestart = TIME.time()
 
                 communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
 
@@ -265,6 +279,8 @@ class MyOwnSolver:
                 communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
 
                 self.next_gCME_time = self.next_gCME_time + 1.0
+                
+                print('CME time: ', TIME.time()-cmestart)
 
 
             ##### ODE Integrator for Metabolism #####
@@ -299,12 +315,14 @@ class MyOwnSolver:
 
                 self.next_metabolism_time = self.next_metabolism_time + 1.0
 
-                print('ODE time (sec): ', TIME.time()-odestart)
+                print('ODE time: ', TIME.time()-odestart)
 
         
         if (self.complete_steps>=80) or (self.complete_steps==0):
             
             if time>0.99:
+                
+                filestart = TIME.time()
                 
                 communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
                 
@@ -318,9 +336,8 @@ class MyOwnSolver:
                 
                 save.writeSimProp(self.sim_properties)
                 
-                lwstart = TIME.time()
                 save.writeLatticeFiles(self.sim_properties, lattice, self.region_dict)
-                print('Lattice restart write time (sec): ', TIME.time()-lwstart)
+                print('Communication and file write time: ', TIME.time()-filestart)
                 
 #                 communicate.communicateCostsToMetabolism(self.sim_properties)
                 
@@ -328,11 +345,14 @@ class MyOwnSolver:
             
             self.complete_steps = 1
             
+            self.endLastHook = TIME.time()
+            
             return 2
         
         else:
             print('Return 1 time: ', time)
             self.complete_steps = self.complete_steps + 1
+            self.endLastHook = TIME.time()
             return 1
 #             return 1
  
