@@ -63,19 +63,19 @@ orgin_stdout = sys.stdout
 
 sys.stdout = log
 
-old_conc_file = '/data/enguang/CMEODE/Metabolism/parameter_analysis_Zane/average_concentrations.csv'
+# old_conc_file = '/data/enguang/CMEODE/Metabolism/parameter_analysis_Zane/average_concentrations.csv'
 
-old_conc_df = pd.read_csv(old_conc_file,delimiter=',')
+# old_conc_df = pd.read_csv(old_conc_file,delimiter=',')
 
-old_meta_list = list(old_conc_df['RXN'])
+# old_meta_list = list(old_conc_df['RXN'])
 
-old_meta_list = ['M_' + meta for meta in old_meta_list ]
+# old_meta_list = ['M_' + meta for meta in old_meta_list ]
 
 meta_list = w.get_metabolite_species()
 
-print("In Old WCM but not current one: ", set(old_meta_list) - set(meta_list))
+# print("In Old WCM but not current one: ", set(old_meta_list) - set(meta_list))
 
-print("In current WCM but not Old", set(meta_list) - set(old_meta_list))
+# print("In current WCM but not Old", set(meta_list) - set(old_meta_list))
 
 # meta_concs = w.get_conc_traces(old_meta_list)
 
