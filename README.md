@@ -6,8 +6,8 @@ This repository contains the 4D whole-cell model for the genetically minimal cel
 
 - [Lattice Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes)
 - [odecell](https://github.com/Luthey-Schulten-Lab/odecell) - [https://github.com/Luthey-Schulten-Lab/odecell](https://github.com/Luthey-Schulten-Lab/odecell) (Install this in the same conda environment as Lattice Microbes AFTER building Lattice Microbes)
-- [btree_chromo](https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu) - [https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu](https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu) (Requires installation with Kokkos enabled version of LAMMPS)
-- [sc_chain_generation](https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation) - [https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation](https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation)
+- [btree_chromo](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu) - [https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu) (Requires installation with Kokkos enabled version of LAMMPS)
+- [sc_chain_generation](https://github.com/Luthey-Schulten-Lab/sc_chain_generation) - [https://github.com/Luthey-Schulten-Lab/sc_chain_generation](https://github.com/Luthey-Schulten-Lab/sc_chain_generation)
 - [FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) - [https://github.com/weria-pezeshkian/FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) (OPTIONAL: Some pregenerated membrane shapes are provided here.)
 
 ## Running the Model
