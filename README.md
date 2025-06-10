@@ -1,13 +1,13 @@
 # MC4D
 
-This repository contains the 4D whole-cell model for the genetically minimal cell, JCVI-syn3A. This model is published in XXXXXXXXXX. Below, you will find instructions on required programs that need to be installed, instructions on how to run the model, and descriptions of individual simulation files.
+This repository contains the 4D whole-cell model for the genetically minimal cell, JCVI-syn3A. Below, you will find instructions on required programs that need to be installed, instructions on how to run the model, and descriptions of individual simulation files.
 
 ## Required Programs
 
 - [Lattice Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes)
-- [odecell](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) - [https://github.com/Luthey-Schulten-Lab/Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) (Install this in the same conda environment as Lattice Microbes AFTER building Lattice Microbes)
-- [btree_chromo](https://gitlab.com/brg4/btree_chromo) - [https://gitlab.com/brg4/btree_chromo](https://gitlab.com/brg4/btree_chromo) (Requires installation with Kokkos enabled version of LAMMPS)
-- [sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation) - [https://gitlab.com/brg4/sc_chain_generation](https://gitlab.com/brg4/sc_chain_generation)
+- [odecell](https://github.com/Luthey-Schulten-Lab/odecell) - [https://github.com/Luthey-Schulten-Lab/odecell](https://github.com/Luthey-Schulten-Lab/odecell) (Install this in the same conda environment as Lattice Microbes AFTER building Lattice Microbes)
+- [btree_chromo](https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu) - [https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu](https://gitlab.com/Luthey-Schulten-Lab/btree_chromo_gpu) (Requires installation with Kokkos enabled version of LAMMPS)
+- [sc_chain_generation](https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation) - [https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation](https://gitlab.com/Luthey-Schulten-Lab/sc_chain_generation)
 - [FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) - [https://github.com/weria-pezeshkian/FreeDTS](https://github.com/weria-pezeshkian/FreeDTS) (OPTIONAL: Some pregenerated membrane shapes are provided here.)
 
 ## Running the Model
