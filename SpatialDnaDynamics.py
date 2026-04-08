@@ -1093,17 +1093,26 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         
         # Calculate change in membrane shape
         bead_size = 3.4
-        
+
         divHdiff = sim_properties['divH'] - sim_properties['divH_Prev']
         divRdiff = sim_properties['divR'] - sim_properties['divR_Prev']
-        
+
+        # Also check neck radius change — neck = sqrt(R^2 - H^2) is highly
+        # nonlinear when H/R approaches 1 (late division).  A 2 nm change in H
+        # can shrink the neck by >6 nm, which the linear check misses.
+        from math import sqrt
+        neck_prev = sqrt(max(0, sim_properties['divR_Prev']**2 - sim_properties['divH_Prev']**2))
+        neck_curr = sqrt(max(0, sim_properties['divR']**2 - sim_properties['divH']**2))
+        neck_diff = abs(neck_prev - neck_curr)
+
         #Progressively change membrane shape to new geometry
-        if divHdiff>bead_size or divRdiff>bead_size:
-            
-            Hsteps = int(divHdiff/bead_size+1)
-            Rsteps = int(divRdiff/bead_size+1)
-            
-            div_steps = max(Hsteps,Rsteps)
+        if abs(divHdiff)>bead_size or abs(divRdiff)>bead_size or neck_diff>bead_size:
+
+            Hsteps = int(abs(divHdiff)/bead_size+1) if abs(divHdiff)>bead_size else 1
+            Rsteps = int(abs(divRdiff)/bead_size+1) if abs(divRdiff)>bead_size else 1
+            Nsteps = int(neck_diff/bead_size+1) if neck_diff>bead_size else 1
+
+            div_steps = max(Hsteps, Rsteps, Nsteps)
             
             Hdelt = divHdiff/div_steps
             Rdelt = divRdiff/div_steps
