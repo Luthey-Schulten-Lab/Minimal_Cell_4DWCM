@@ -1062,7 +1062,14 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
             
         # Create the division cell shape
-        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10 - sim_properties['lattice_spacing']*10/1e-9)))
+        # Ensure R_bdry > H_bdry so the two spheres always overlap (no non-physical gap).
+        # The lattice_spacing correction on R can make R_bdry < H_bdry in late division,
+        # producing a gap between the two boundary hemispheres.  DNA beads caught in
+        # this gap are pushed apart by boundary repulsion, overstretching FENE bonds.
+        lattice_corr = sim_properties['lattice_spacing']*10/1e-9
+        divH_prev_A = int(sim_properties['divH_Prev']*10)
+        divR_prev_A = max(int(sim_properties['divR_Prev']*10 - lattice_corr), divH_prev_A + 1)
+        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divH_prev_A, divR_prev_A))
             
         # Set simulator parameters and paths
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
@@ -1111,7 +1118,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
             for i in range(int(div_steps)):
             
                 divHA = int((sim_properties['divH_Prev'] + (i+1)*Hdelt)*10)
-                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - sim_properties['lattice_spacing']*10/1e-9)
+                divRA = max(int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - lattice_corr), divHA + 1)
 
                 f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
                 f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
@@ -1122,7 +1129,7 @@ def writeDivisionChromosomeInputFile(time, sim_properties):
         
         # Minimize in the new division shape
         divHA = int(sim_properties['divH']*10)
-        divRA = int(sim_properties['divR']*10 - sim_properties['lattice_spacing']*10/1e-9)
+        divRA = max(int(sim_properties['divR']*10 - lattice_corr), divHA + 1)
 
         f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
