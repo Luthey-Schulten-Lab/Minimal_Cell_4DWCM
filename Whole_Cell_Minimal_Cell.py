@@ -2,6 +2,7 @@
 import argparse
 
 import os
+import time  # Add time import
 
 #########################################################################################
 ap = argparse.ArgumentParser()
@@ -38,6 +39,12 @@ else:
 
 
 #########################################################################################
+# Start simulation timer
+sim_start_time = time.time()
+print("=" * 80)
+print("Starting simulation...")
+print("=" * 80)
+
 import jLM
 
 from jLM.Solvers import makeSolver
@@ -73,6 +80,8 @@ sim_properties['dna_software_directory'] = str(args.dnaSoftwareDirectory)
 sim_properties['membrane_directory'] =sim_properties['head_directory'] + 'input_data/membrane/cell{:d}/'.format(args.membrane)
     
 sim_properties['division_started'] = False
+
+sim_properties['profile_ribosomes'] = True
 
 region_dict, ribo_site_dict = InitGeom.buildRegions(sim, sim_properties)
 
@@ -111,6 +120,25 @@ solver = Solver(sim, sim_properties, region_dict, ribo_site_dict, termination_ti
 
 sim.finalize()
 
+# Start timer for simulation run
+sim_start_time = time.time()
+print('='*80)
+print('Starting simulation run...')
+print('='*80)
+
 sim.run(solver=solver, cudaDevices=[int(args.cudaDevices)])
+
+# End timer and print results
+sim_end_time = time.time()
+total_sim_time = sim_end_time - sim_start_time
+hours = int(total_sim_time // 3600)
+minutes = int((total_sim_time % 3600) // 60)
+seconds = total_sim_time % 60
+
+print('='*80)
+print('Simulation completed!')
+print('Total simulation time: {:.2f} seconds ({:d}h {:d}m {:.2f}s)'.format(
+    total_sim_time, hours, minutes, seconds))
+print('='*80)
 #########################################################################################
 

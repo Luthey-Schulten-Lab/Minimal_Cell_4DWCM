@@ -65,6 +65,7 @@ def initSim(hook_step, write_step, totalTime, workingDirectoryName, headDirector
     try:
         os.makedirs(simFolder)
         os.makedirs(DNAfolder)
+        os.makedirs(DNAfolder + 'loops/')
         print('Created sim directory')
     except:
         print('sim directory already exists')
@@ -145,6 +146,37 @@ def initSim(hook_step, write_step, totalTime, workingDirectoryName, headDirector
     sim_properties['last_DNA_step'] = None
     
     sim_properties['rep_started'] = False
+
+    # SMC looping (btree_chromo protein_science / template_replicate.inp); see SpatialDnaDynamics.py
+    # DNA hook cadence is 4.0 bio seconds. Optional override:
+    # DNA_HOOK_INTERVAL_SEC or DNA_HOOK_INTERVAL_S.
+    _dna_hook_env = (
+        os.environ.get('DNA_HOOK_INTERVAL_SEC')
+        or os.environ.get('DNA_HOOK_INTERVAL_S')
+        or ''
+    ).strip()
+    try:
+        sim_properties['dna_hook_interval_s'] = (
+            float(_dna_hook_env) if _dna_hook_env else 4.0
+        )
+    except ValueError:
+        raise ValueError(
+            'DNA_HOOK_INTERVAL_SEC/S must be a float, got {!r}'.format(_dna_hook_env)
+        )
+    if sim_properties['dna_hook_interval_s'] <= 0:
+        raise ValueError('dna_hook_interval_s must be > 0')
+    print('dna_hook_interval_s = {:.3f} s (env override={!r})'.format(
+        sim_properties['dna_hook_interval_s'], _dna_hook_env or '<default 4.0>'))
+    # 500 bp/s → translocate:100,T per 4 s hook (v_bps/10 steps per 2 s template batch)
+    sim_properties['dna_loop_translocate_bps'] = 500
+    sim_properties['dna_loop_equilibrate_steps'] = 360000
+    sim_properties['dna_smc_bound_fraction'] = 0.5
+    sim_properties['dna_initial_soft_harmonic_steps'] = 10000
+    sim_properties['dna_initial_soft_harmonic_output'] = 20000
+    # Template BD batch (2 s) scaled to dna_hook_interval_s; dna_bd_walltime_scale from
+    # test_protein_science profiling (~77 s RDME vs ~132 s btree per 4 s bio, hook 2+).
+    sim_properties['dna_bd_walltime_scale'] = 77.0 / 132.0
+    sim_properties['dna_bd_run_steps'] = 20000
     
     sim_properties['rnap_spacing'] = int(400)
     

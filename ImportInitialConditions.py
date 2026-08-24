@@ -464,6 +464,38 @@ def initializePromoterStrengths(sim_properties):
 #########################################################################################
 
 
+def _get_dna_coord(DNAcoords, index):
+    """Get (x,y,z) for DNA index. Handles 1-based dict, 0-based dict, or 0-based array; clips if one past end."""
+    idx = int(index)
+    if hasattr(DNAcoords, 'keys'):
+        # dict (often 1-based: keys 1..N)
+        if idx in DNAcoords:
+            return DNAcoords[idx]
+        if idx - 1 in DNAcoords:
+            return DNAcoords[idx - 1]
+        n = len(DNAcoords)
+        max_key = max(DNAcoords.keys()) if DNAcoords else 0
+        if idx == max_key + 1 and max_key in DNAcoords:
+            import warnings
+            warnings.warn(f'DNA index {idx} is one past last coordinate ({max_key}); using last coordinate.')
+            return DNAcoords[max_key]
+        raise KeyError(
+            f'DNA index {idx} not in DNAcoords (valid keys 1..{max_key}, {n} particles). '
+            'Genome and DNA coordinate length may be inconsistent.'
+        )
+    else:
+        # array-like (0-based)
+        n = len(DNAcoords)
+        if idx < 0 or idx >= n:
+            if idx == n and n > 0:
+                import warnings
+                warnings.warn(f'DNA index {idx} is one past last coordinate; using last (0-based {n-1}).')
+                idx = n - 1
+            else:
+                raise IndexError(f'DNA index {idx} out of range (0..{n-1}, {n} particles).')
+        return DNAcoords[idx]
+
+
 #########################################################################################
 def initializeDnaParticles(sim, sim_properties):
     """
@@ -487,7 +519,7 @@ def initializeDnaParticles(sim, sim_properties):
         start = int(locusDict['startIndex'][0])
         end = int(locusDict['endIndex'][0])
         
-        startXYZ = DNAcoords[start]
+        startXYZ = _get_dna_coord(DNAcoords, start)
         
         gene.placeParticle(int(startXYZ[0]), int(startXYZ[1]), int(startXYZ[2]), 1)
         
@@ -495,7 +527,7 @@ def initializeDnaParticles(sim, sim_properties):
         
         dnaParticle = sim.species(feature)
         
-        partXYZ = DNAcoords[int(fdict['index'])]
+        partXYZ = _get_dna_coord(DNAcoords, fdict['index'])
         
         dnaParticle.placeParticle(int(partXYZ[0]), int(partXYZ[1]), int(partXYZ[2]), 1)
         

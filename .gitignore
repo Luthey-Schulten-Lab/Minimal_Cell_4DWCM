@@ -1,0 +1,16 @@
+# Simulation outputs (large trajectories, DNA hooks, logs)
+Data/
+
+# Local run logs at repo root
+test_*_run.log
+test_*_restart.log
+
+# Built / vendored DNA binaries (build from upstream + patches)
+external_software/
+
+# Nested git metadata inside reference clones
+_reference/**/.git/
+_reference/**/.git.bak/
+
+__pycache__/
+*.pyc

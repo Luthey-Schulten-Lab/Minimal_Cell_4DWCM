@@ -57,6 +57,14 @@ def initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, tot
     restart_time = int(round(sim_properties['time']))
     
     filename = simFolder + 'MinCell_restart_{:d}.lm'.format(restart_time)
+    if not os.path.isfile(filename):
+        fallback = simFolder + 'MinCell.lm'
+        if os.path.isfile(fallback):
+            print('Using {} (no timestamped restart checkpoint)'.format(fallback))
+            filename = fallback
+        else:
+            raise FileNotFoundError(
+                'Missing restart checkpoint: {} and {}'.format(filename, fallback))
 
     lattice_spacing = sim_properties['lattice_spacing']
     

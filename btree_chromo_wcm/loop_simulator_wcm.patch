@@ -1,0 +1,38 @@
+--- a/include/loop_simulator.hpp
++++ b/include/loop_simulator.hpp
+@@ -52,6 +52,8 @@ public:
+   void set_N(int N_new);
+   void set_M(int M_new);
+ 
++  int get_numSmc_initial() const { return numSmc_initial; }
++
+   int read_loop_params(std::string loop_param_filename);
+ 
+   std::vector<bond> get_loop_bonds();
+@@ -70,6 +72,7 @@ private:
+   int left_fork;
+   int right_fork;
+   int M; // Number of SMCs
++  int numSmc_initial; // from loop_params numSmc (not replication-scaled)
+ 
+   double falloff;
+   double step_prob;
+--- a/src/loop_simulator.cpp
++++ b/src/loop_simulator.cpp
+@@ -648,12 +648,13 @@ int loop_simulator::read_loop_params(std::string loop_param_filename)
+ 		  else if (param == "N")
+ 		    {
+-		      this->N = stoi(val);
+-		      this->N_initial = this->N;
++		      set_N(stoi(val));
+ 		    }
+                   else if (param == "numSmc")
+ 		    {
+-		      this->M = stoi(val);
+-		      this->numSmc_initial = this->M;
++		      int m_new = stoi(val);
++		      this->numSmc_initial = m_new;
++		      set_M(m_new);
+ 		    }
+ 		  else if (param == "smcWidth")
+ 		    {

@@ -194,8 +194,13 @@ def assignDnaSites(sim_properties):
 #     timestep = int(time/sim_properties['timestep'])
     
     DNAfile = sim_properties['working_directory']+'DNA/' + 'x_chain_Syn3A_chromosome_init_rep00001.xyz'
-    
-    fileType = DNAfile.split('.')[1] #'bin'
+
+    # Use os.path.splitext so dots in the output dir name (e.g. "btree2.0")
+    # don't break extension detection. .split('.')[1] gave the *second*
+    # dot-separated piece, not the extension, and silently fell through
+    # both the 'bin' and 'xyz' branches when the path had > 1 dot.
+    import os
+    fileType = os.path.splitext(DNAfile)[1].lstrip('.')
     
     print(fileType)
     

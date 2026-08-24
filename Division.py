@@ -297,7 +297,7 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
     
     ribo_site_dict = ribosomesRDME.placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateTranslat=False)
     
-    region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, region_dict)
+    region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, region_dict, sim_properties)
     
     for ribo_type, type_dict in ribo_site_dict.items():
         

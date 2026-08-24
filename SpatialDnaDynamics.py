@@ -11,6 +11,8 @@ import os
 
 import subprocess
 
+import shutil
+
 from subprocess import Popen, PIPE
 
 import time as timepy
@@ -23,6 +25,311 @@ from LatticeFunctions import *
 import GIP_rates as GIP
 
 import FreeDTS_functions as fdf
+
+
+# Biological time between DNA hook updates (seconds); must match Hook.next_DNA_time increment.
+DNA_HOOK_INTERVAL_S = 4.0
+
+# template_replicate.inp advances loops / BD once per 2 s batch inside repeat:30
+TEMPLATE_HOOK_BATCH_S = 2.0
+
+# Syn3A chromosome length in 10 bp RDME/LAMMPS beads (loop_params N=)
+SYN3A_CHROMO_BEADS = 54338
+
+
+def _dna_work_dir(sim_properties):
+    return sim_properties['working_directory'] + 'DNA/'
+
+
+def _loops_dir(sim_properties):
+    loops_dir = _dna_work_dir(sim_properties) + 'loops/'
+    os.makedirs(loops_dir, exist_ok=True)
+    return loops_dir
+
+
+def _loops_file(sim_properties, timestep):
+    return _loops_dir(sim_properties) + 'loops_{:d}.txt'.format(timestep)
+
+
+def _loop_prng_seed(sim_properties, timestep):
+    return int(timestep / 10000 + sim_properties['dna_rng_seed'])
+
+
+def _translocate_speed(sim_properties):
+    """Per template_replicate.inp / run_btree_chromo_replicate.py (v_bps/10 per 2 s batch)."""
+    v_bps = sim_properties.get('dna_loop_translocate_bps', 200)
+    return max(1, int(round(v_bps / 10.0)))
+
+
+def _translocate_steps_for_hook(sim_properties):
+    """translocate:N,T steps for one DNA hook, scaled from the template 2 s batch size."""
+    speed = _translocate_speed(sim_properties)
+    hook_s = sim_properties.get('dna_hook_interval_s', DNA_HOOK_INTERVAL_S)
+    return max(1, int(round(speed * hook_s / TEMPLATE_HOOK_BATCH_S)))
+
+
+def _is_first_dna_step(sim_properties):
+    return sim_properties['last_DNA_step'] is None
+
+
+def _parse_loops_snapshot(loops_path):
+    """Return (loop_line_strings, fork_metadata_line) from the last snapshot in a loops file."""
+    if not os.path.isfile(loops_path):
+        return [], None
+
+    with open(loops_path, 'r') as f:
+        lines = f.readlines()
+
+    header_idx = -1
+    for i, line in enumerate(lines):
+        if line.startswith('Number of loops:'):
+            header_idx = i
+
+    if header_idx < 0:
+        return [], None
+
+    fork_line = None
+    if header_idx + 1 < len(lines) and lines[header_idx + 1].startswith('Replication forks:'):
+        fork_line = lines[header_idx + 1].rstrip('\n')
+
+    records = []
+    for line in lines[header_idx + 2:]:
+        stripped = line.strip()
+        if not stripped:
+            break
+        parts = stripped.split()
+        if len(parts) >= 2:
+            records.append(line if line.endswith('\n') else line + '\n')
+
+    return records, fork_line
+
+
+def _write_loops_snapshot(loops_path, records, fork_line=None):
+    with open(loops_path, 'w') as f:
+        f.write('Number of loops: {:d}\n'.format(len(records)))
+        if fork_line is not None:
+            f.write(fork_line + '\n')
+        else:
+            f.write('Replication forks: 0, 0\n')
+        for line in records:
+            f.write(line)
+
+
+def _prepare_loops_file_for_hook(sim_properties, from_timestep, m_target):
+    """
+    Trim the previous hook's loops snapshot to m_target rows so it matches numSmc
+    written to loop_params.txt for this hook.
+    """
+    loops_path = _loops_file(sim_properties, from_timestep)
+    records, fork_line = _parse_loops_snapshot(loops_path)
+
+    if len(records) > m_target:
+        print('Trimming loops file from {:d} to {:d} SMCs'.format(len(records), m_target))
+        records = records[:m_target]
+    elif len(records) < m_target:
+        print('WARNING: loops file has {:d} entries but RDME requests {:d} SMCs; '
+              'btree_chromo will birth the remainder after load'.format(len(records), m_target))
+
+    _write_loops_snapshot(loops_path, records, fork_line)
+    return loops_path
+
+
+# Wall-clock seconds to wait for a background btree_chromo step before rescue.
+# The first hook equilibrates with long BD + translocate and often exceeds 5 min.
+DNA_BTREE_WAIT_TIMEOUT_S = 1800
+
+
+def _chromo_topo_path(sim_properties, step):
+    return _dna_work_dir(sim_properties) + 'chromo_topo_{:d}.dat'.format(step)
+
+
+def _write_prereplication_chromo_topo(sim_properties, step, n_beads=SYN3A_CHROMO_BEADS):
+    """Write a non-replicated topology file matching btree dump_topology format."""
+    topo_path = _chromo_topo_path(sim_properties, step)
+    ori_idx = n_beads // 2
+    with open(topo_path, 'w') as f:
+        f.write('size={}\n'.format(n_beads))
+        f.write('m({}),{},1,{},{},1\n'.format(n_beads, n_beads, ori_idx, n_beads))
+    return topo_path
+
+
+def _ensure_chromo_topo(sim_properties, step=None):
+    """Return chromo_topo path, synthesizing pre-replication topology if btree omitted it."""
+    if step is None:
+        step = sim_properties['last_DNA_step']
+    topo_path = _chromo_topo_path(sim_properties, step)
+    if os.path.isfile(topo_path) and os.path.getsize(topo_path) > 0:
+        return topo_path
+    n_beads = sim_properties.get('counts', {}).get('chromosome', SYN3A_CHROMO_BEADS)
+    if not n_beads or n_beads < SYN3A_CHROMO_BEADS:
+        n_beads = SYN3A_CHROMO_BEADS
+    print('WARNING: missing {}; writing pre-replication topology ({} beads)'.format(
+        topo_path, n_beads))
+    return _write_prereplication_chromo_topo(sim_properties, step, n_beads)
+
+
+def _dna_outputs_ready(workDir, step):
+    mono = workDir + 'dna_monomers_{:d}.bin'.format(step)
+    topo = workDir + 'chromo_topo_{:d}.dat'.format(step)
+    return (
+        os.path.isfile(mono) and os.path.getsize(mono) > 0
+        and os.path.isfile(topo) and os.path.getsize(topo) > 0
+    )
+
+
+def _load_loops_directive(sim_properties, loops_path):
+    """template_replicate.inp line 23 — omitted on the first DNA hook only."""
+    if _is_first_dna_step(sim_properties):
+        return ''
+    return 'load_loops:' + loops_path
+
+
+def _equilibrate_loops_directive(sim_properties):
+    """template_replicate.inp line 27 — first hook only."""
+    if not _is_first_dna_step(sim_properties):
+        return ''
+    steps = sim_properties.get('dna_loop_equilibrate_steps', 360000)
+    return 'translocate:{:d},F'.format(steps)
+
+
+def _append_string(sim_properties):
+    """template_replicate.inp {append_string} on line 24."""
+    if _is_first_dna_step(sim_properties):
+        return 'noappend,first'
+    return 'append,nofirst'
+
+
+def _initial_soft_harmonic_directive(sim_properties):
+    """template_replicate.inp line 24 — initial frame before the hook repeat body."""
+    run_steps = sim_properties.get('dna_initial_soft_harmonic_steps', 10000)
+    thermo_freq = 1000
+    steps_before_output = sim_properties.get('dna_initial_soft_harmonic_output', 20000)
+    return 'simulator_run_soft_harmonic:{:d},{:d},{:d},{}'.format(
+        run_steps, thermo_freq, steps_before_output, _append_string(sim_properties))
+
+
+def _run_dynamics_directive(sim_properties):
+    """template_replicate.inp line 44 — BD during the hook, scaled from 2 s template defaults."""
+    hook_s = sim_properties.get('dna_hook_interval_s', DNA_HOOK_INTERVAL_S)
+    scale = hook_s / TEMPLATE_HOOK_BATCH_S
+    wall_scale = float(sim_properties.get('dna_bd_walltime_scale', 1.0))
+    run_steps = max(
+        1000,
+        int(sim_properties.get('dna_bd_run_steps', 20000) * scale * wall_scale),
+    )
+    # dump_freq (arg 3) == run_steps → one lammpstrj frame at the end of each hook BD batch
+    dump_freq = run_steps
+    return 'simulator_run_soft_harmonic:{:d},1000,{:d},append,nofirst'.format(
+        run_steps, dump_freq)
+
+
+def _num_smc(sim_properties):
+    """
+    Active SMC loopers for btree_chromo (numSmc in loop_params.txt).
+
+    Uses the same basis as the legacy simulator_run_loops loop count:
+    P_0415 is the SMC protein count on the RDME lattice; each complex uses two
+    copies, so complexes = P_0415 / 2. Only the bound fraction participates in
+    loop extrusion (default 1.0 = all complexes active).
+    """
+    bound_fraction = float(sim_properties.get('dna_smc_bound_fraction', 1.0))
+    n_complexes = sim_properties['counts']['P_0415'] / 2.0
+    return max(1, int(n_complexes * bound_fraction))
+
+
+def _write_loop_params_file(sim_properties, num_smc):
+    """Write loop_params.txt for the current hook, overriding numSmc for btree_chromo."""
+    work_dir = _dna_work_dir(sim_properties)
+    template_path = sim_properties['head_directory'] + 'input_data/loop_params.txt'
+    out_path = work_dir + 'loop_params.txt'
+
+    overrides = {'numSmc': str(num_smc)}
+    with open(template_path, 'r') as template_file:
+        lines = template_file.readlines()
+
+    with open(out_path, 'w') as out_file:
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith('#') and '=' in stripped:
+                key = stripped.split('=', 1)[0].strip()
+                if key in overrides:
+                    out_file.write('{}={}\n'.format(key, overrides[key]))
+                    continue
+            out_file.write(line)
+
+    print('DNA hook loop_params: numSmc={:d} (P_0415={:d}, bound_fraction={})'.format(
+        num_smc,
+        int(sim_properties['counts']['P_0415']),
+        sim_properties.get('dna_smc_bound_fraction', 1.0),
+    ))
+
+    return out_path
+
+
+def _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_started):
+    """
+    SMC looping + BD for one 4 s DNA hook, following template_replicate.inp and
+    run_btree_chromo_replicate.py (load_loops, equilibrate_loops, repeat body, run_dynamics).
+    """
+    m_target = _num_smc(sim_properties)
+
+    loops_path = None
+    if not _is_first_dna_step(sim_properties):
+        loops_path = _prepare_loops_file_for_hook(
+            sim_properties, sim_properties['last_DNA_step'], m_target)
+
+    loop_params_path = _write_loop_params_file(sim_properties, m_target)
+    f.write('simulator_load_loop_params:' + loop_params_path + '\n')
+
+    load_loops = _load_loops_directive(sim_properties, loops_path)
+    if load_loops:
+        f.write(load_loops + '\n')
+
+    if _is_first_dna_step(sim_properties):
+        f.write(_initial_soft_harmonic_directive(sim_properties) + '\n')
+
+    equilibrate_loops = _equilibrate_loops_directive(sim_properties)
+    if equilibrate_loops:
+        f.write(equilibrate_loops + '\n')
+
+    # One hook-interval block (template_replicate.inp repeat body, lines 31-44)
+    f.write('sync_simulator_and_system\n')
+
+    if rep_started:
+        if _is_first_dna_step(sim_properties):
+            repCw = 40
+            repCcw = 40
+        else:
+            repCw, repCcw = getReplicatedSegments(sim_properties)
+        f.write('set_initial_state\n')
+        f.write('transform:m_cw' + str(repCw) + '_ccw' + str(repCcw) + '\n')
+        f.write('set_final_state\n')
+        f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
+        f.write('map_replication\n')
+
+    f.write('write_loops:' + _loops_file(sim_properties, timestep) + '\n')
+    f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+
+    use_fork_repulsion = bool(sim_properties.get('dna_fork_partition_repulsion', False))
+    if use_fork_repulsion and not checkDaughtersFullyPartitioned(sim_properties):
+        print('DNA not fully partitioned yet; fork partition repulsion ON during looping')
+        f.write('switch_fork_partition_repulsion:T\n')
+
+    f.write('translocate:{:d},T\n'.format(_translocate_steps_for_hook(sim_properties)))
+    # (b) Single data round-trip: after call #1 this hook LAMMPS already holds the
+    # correct backbone topology + fork-partition groups, translocate only advanced
+    # the loop system on the CPU, and loop bonds are (re)applied by the following
+    # simulator_form_loops. So the 2nd full write+clear+read_data rebuild is
+    # unnecessary CPU-bound work that competed with the RDME host thread; replace
+    # it with an in-place coord scatter. Reversible via dna_second_roundtrip_inplace.
+    if bool(sim_properties.get('dna_second_roundtrip_inplace', True)):
+        f.write('sys_update_lammps_inplace:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+    else:
+        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+    f.write('simulator_form_loops:F\n')
+    f.write('simulator_minimize_topoDNA_harmonic:1000\n')
+    f.write('simulator_set_delta_t:2.5E+7\n')
+    f.write(_run_dynamics_directive(sim_properties) + '\n')
 
 
 #########################################################################################
@@ -83,79 +390,74 @@ def updateChromosomeDivision(time, lattice, sim_properties, region_dict, ribo_si
     Inputs:
     lattice - LM lattice object including particle and site lattice
     sim_properties - Dictionary of simulation variables and state trackers
-    
+
     Returns:
+        region_dict, DNA_lattice_coords, genome
     Called by:
+        Hook.run() when (division_started and updateRegions) is True.
     Description:
+        Division-phase chromosome update for the protein_science (persistent-SMC)
+        branch. writeChromosomeInputFile() already folds the dividing-membrane
+        boundary (overlapping_spheres_bdry) into the normal replicate-hook protocol
+        when division_started is True ("only the membrane boundary shape changes"),
+        so a division DNA step uses the same persistent-SMC btree_chromo path as
+        growth, with updateRegions forced True.
+
+        This mirrors the control flow of the upstream updateChromosomeDivision
+        (rotate -> place -> remap -> move -> optional late-division partition ->
+        write + run) but routes btree_chromo through writeChromosomeInputFile /
+        runNewChromosome instead of the legacy writeDivisionChromosomeInputFile /
+        runDivChromosome (which do not exist on this branch and emit the old
+        non-persistent-SMC directives).
     """
-    
     print('DNA Division Step')
-    
+
     if sim_properties['last_DNA_step'] is None:
-        
+
         DNA_lattice_coords = sim_properties['DNAcoords']
-        
+
         genome = sim_properties['genome']
-        
+
     elif sim_properties['last_DNA_step'] is not None:
-    
+
         checkLastChromosome(sim_properties)
-        
+
         if 'rotated_DNA' not in sim_properties.keys():
-            
+
             rotateChromosome(time, sim_properties)
 
-#         deleteOldChromosome(lattice)
-    
         region_dict, DNA_lattice_coords = placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict)
 
         genome = remapDNA(sim_properties)
 
         sim_properties['genome'] = genome
-        
+
         moveDnaParticles(sim_properties, lattice, DNA_lattice_coords)
 
         sim_properties['DNAcoords'] = DNA_lattice_coords
-        
+
     if np.rint(time) < sim_properties['total_time']:
 
-#         writeRiboObstacleFile(time, ribo_site_dict, sim_properties)
+        # Late-division daughter separation (matches the upstream gating). Runs
+        # btree_chromo synchronously once to push the two daughters into opposite
+        # lobes. Disable with sim_properties['dna_partition_at_division'] = False.
+        if sim_properties.get('dna_partition_at_division', True) \
+                and (sim_properties['divH'] > 190) \
+                and not checkDaughtersFullyPartitioned(sim_properties):
 
-    #     writeMembraneBoundaryFile(time, region_dict, sim_properties)
-    
-#         bp_grow_steps = makeBdryCompressionFiles(time, sim_properties, slice_size=5)
-        
-#         DirectivesFname = writeBrdyGrowChromosomeInputFile(time, sim_properties, bp_grow_steps)
-
-        if (sim_properties['divH']>190) and not checkDaughtersFullyPartitioned(sim_properties):
-        
             if 'partitionedDNA' not in sim_properties.keys():
-                
+
                 partitionChromosomes(sim_properties)
-                
+
                 sim_properties['partitionedDNA'] = True
 
-        writeDivisionChromosomeInputFile(time, sim_properties)
+        writeRiboObstacleFile(time, ribo_site_dict, sim_properties)
 
-        runDivChromosome(time, sim_properties)
-    
-        timestep = int(time/sim_properties['timestep'])
-    
-        lastStep = sim_properties['last_DNA_step']
+        writeChromosomeInputFile(time, sim_properties, True)
 
-        sim_properties['last_last_DNA_step'] = lastStep
+        runNewChromosome(time, sim_properties)
 
-        sim_properties['last_DNA_step'] = timestep
-    
-        region_dict, DNA_lattice_coords = placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dict)
-
-        genome = remapDNA(sim_properties)
-
-        sim_properties['genome'] = genome
-        
-        moveDnaParticles(sim_properties, lattice, DNA_lattice_coords)
-        
-        print('Updated chromosomes with dividing membrane')
+        print('Started running new dividing chromosome in background')
 
     return region_dict, DNA_lattice_coords, genome
 #########################################################################################
@@ -176,21 +478,25 @@ def checkLastChromosome(sim_properties):
     
     workDir = sim_properties['working_directory']+'DNA/'
     
-    DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+    step = sim_properties['last_DNA_step']
+    DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(step)
+    topo_file = workDir + 'chromo_topo_{:d}.dat'.format(step)
     
     print(DNAfile)
     
-    last_DNA_complete = os.path.isfile(DNAfile)
+    last_DNA_complete = _dna_outputs_ready(workDir, step)
     
     if not last_DNA_complete:
         
-        print("Waiting on BRGDNA to complete configuration")
+        print("Waiting on BRGDNA to complete configuration (monomers + chromo_topo)")
         
-    DNA_wait = 0
+    DNA_wait = 0.0
+    sleep_interval = 0.5  # Start with 0.5 second checks for faster detection
+    wait_timeout = float(sim_properties.get('dna_btree_wait_timeout_s', DNA_BTREE_WAIT_TIMEOUT_S))
     
     while not last_DNA_complete:
         
-        if DNA_wait>=300:
+        if DNA_wait >= wait_timeout:
             
             rescueDNA(sim_properties)
             
@@ -198,11 +504,19 @@ def checkLastChromosome(sim_properties):
             
             return None
         
-        last_DNA_complete = os.path.isfile(DNAfile)
+        timepy.sleep(sleep_interval)
+        DNA_wait = DNA_wait + sleep_interval
         
-        timepy.sleep(10)
+        last_DNA_complete = _dna_outputs_ready(workDir, step)
         
-        DNA_wait = DNA_wait + 10
+        # Exponential backoff: increase interval gradually, but cap at 2 seconds
+        # This allows fast detection when file appears soon, but doesn't waste CPU on long waits
+        if DNA_wait < 5.0:
+            sleep_interval = 0.5  # First 5 seconds: check every 0.5s
+        elif DNA_wait < 15.0:
+            sleep_interval = 1.0  # 5-15 seconds: check every 1s
+        else:
+            sleep_interval = 2.0  # After 15 seconds: check every 2s
         
     print("Waited seconds: "+str(DNA_wait))
         
@@ -253,8 +567,87 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
         with open(DNAfile,'rb') as f:
             
             DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
-            
-        DNAcoords = DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T
+        
+        # Validate DNA file content
+        if len(DNAbin) == 0:
+            print(f"ERROR: DNA file {DNAfile} is empty (0 bytes)! btree_chromo may have failed.")
+            print("Attempting to use rescue DNA configuration...")
+            rescueDNA(sim_properties)
+            rescueDNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+            if os.path.isfile(rescueDNAfile) and os.path.getsize(rescueDNAfile) > 0:
+                print(f"Using rescue DNA file: {rescueDNAfile}")
+                with open(rescueDNAfile,'rb') as f:
+                    DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+            else:
+                raise ValueError(f"DNA file is empty and rescue file also unavailable. Cannot proceed.")
+        
+        if len(DNAbin) % 3 != 0:
+            print(f"ERROR: DNA file {DNAfile} has invalid size: {len(DNAbin)} floats (not divisible by 3)")
+            print(f"This indicates file corruption. Expected size divisible by 3 (each particle needs x,y,z coordinates).")
+            print("Attempting to use rescue DNA configuration...")
+            rescueDNA(sim_properties)
+            rescueDNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+            if os.path.isfile(rescueDNAfile) and os.path.getsize(rescueDNAfile) > 0:
+                print(f"Using rescue DNA file: {rescueDNAfile}")
+                with open(rescueDNAfile,'rb') as f:
+                    DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+                # Validate rescue file too
+                if len(DNAbin) % 3 != 0:
+                    raise ValueError(f"Rescue DNA file also has invalid size: {len(DNAbin)} floats (not divisible by 3)")
+            else:
+                raise ValueError(f"DNA file has invalid size and rescue file also unavailable. Cannot proceed.")
+        
+        # Final safety check right before reshape (in case validation somehow didn't catch it)
+        if len(DNAbin) % 3 != 0:
+            print(f"FATAL: DNA file {DNAfile} has invalid size: {len(DNAbin)} floats (not divisible by 3) - validation was bypassed!")
+            print("Attempting to use rescue DNA configuration...")
+            rescueDNA(sim_properties)
+            rescueDNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+            if os.path.isfile(rescueDNAfile) and os.path.getsize(rescueDNAfile) > 0:
+                print(f"Using rescue DNA file: {rescueDNAfile}")
+                with open(rescueDNAfile,'rb') as f:
+                    DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+                if len(DNAbin) % 3 != 0:
+                    raise ValueError(f"Rescue DNA file also has invalid size: {len(DNAbin)} floats (not divisible by 3)")
+            else:
+                raise ValueError(f"DNA file has invalid size ({len(DNAbin)} floats, not divisible by 3) and rescue file also unavailable. Cannot proceed.")
+        
+        # Attempt reshape with error handling
+        try:
+            DNAcoords = DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T
+        except ValueError as e:
+            if "cannot reshape" in str(e):
+                print(f"ERROR: Failed to reshape DNA file {DNAfile} - {str(e)}")
+                print(f"File size: {len(DNAbin)} floats (should be divisible by 3 for x,y,z coordinates)")
+                print("Attempting to use rescue DNA configuration...")
+                rescueDNA(sim_properties)
+                rescueDNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+                if os.path.isfile(rescueDNAfile) and os.path.getsize(rescueDNAfile) > 0:
+                    print(f"Using rescue DNA file: {rescueDNAfile}")
+                    with open(rescueDNAfile,'rb') as f:
+                        DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+                    if len(DNAbin) % 3 != 0:
+                        raise ValueError(f"Rescue DNA file also has invalid size: {len(DNAbin)} floats (not divisible by 3)")
+                    DNAcoords = DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T
+                else:
+                    raise ValueError(f"DNA file reshape failed and rescue file also unavailable. Cannot proceed.")
+            else:
+                raise  # Re-raise if it's a different ValueError
+        
+        if len(DNAcoords) == 0:
+            print(f"ERROR: DNA file {DNAfile} loaded but contains 0 particles!")
+            print("Attempting to use rescue DNA configuration...")
+            rescueDNA(sim_properties)
+            rescueDNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
+            if os.path.isfile(rescueDNAfile) and os.path.getsize(rescueDNAfile) > 0:
+                print(f"Using rescue DNA file: {rescueDNAfile}")
+                with open(rescueDNAfile,'rb') as f:
+                    DNAbin = np.fromfile(f,dtype=np.float64,count=-1)
+                if len(DNAbin) % 3 != 0:
+                    raise ValueError(f"Rescue DNA file has invalid size: {len(DNAbin)} floats (not divisible by 3)")
+                DNAcoords = DNAbin.reshape((3,DNAbin.shape[0]//3),order='F').T
+            else:
+                raise ValueError(f"DNA file has 0 particles and rescue file also unavailable. Cannot proceed.")
         
         print(DNAcoords.shape)
         
@@ -362,6 +755,38 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
     
     
 #########################################################################################
+def _safe_add_dna_particle(lattice, a, b, c, particleID, dna_sites=None, max_occ=15):
+    """Place particleID at lattice site (a, b, c) with occupancy-overflow handling.
+
+    moveDnaParticles was historically the only particle-placement path that called
+    lattice.addParticle() with no occupancy check, so a saturated voxel (16 particles)
+    raised InvalidParticleException and killed the whole run. This mirrors the
+    relocation fallback already used in RibosomesRDME/Growth/Division: if the target
+    site is full, place at the nearest DNA lattice site that still has capacity.
+    Returns True if the particle was placed.
+    """
+    a, b, c, particleID = int(a), int(b), int(c), int(particleID)
+    try:
+        if lattice.getOccupancy(a, b, c) < max_occ:
+            lattice.addParticle(a, b, c, particleID)
+            return True
+    except Exception:
+        pass
+    if dna_sites is not None and len(dna_sites) > 0:
+        d2 = ((dna_sites[:, 0] - a) ** 2 + (dna_sites[:, 1] - b) ** 2 + (dna_sites[:, 2] - c) ** 2)
+        for idx in np.argsort(d2)[:1024]:
+            ta, tb, tc = int(dna_sites[idx, 0]), int(dna_sites[idx, 1]), int(dna_sites[idx, 2])
+            try:
+                if lattice.getOccupancy(ta, tb, tc) < max_occ:
+                    lattice.addParticle(ta, tb, tc, particleID)
+                    return True
+            except Exception:
+                continue
+    print("Warning: moveDnaParticles could not place particle", particleID,
+          "near", (a, b, c), "- all nearby DNA sites full")
+    return False
+
+
 def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
     """
     Inputs:
@@ -377,6 +802,12 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
     OldDnaParticleCoords = sim_properties['DNAcoords']
     
     plattice = lattice.getParticleLatticeView()
+
+    # Candidate DNA sites (in lattice.addParticle arg order = [z, y, x]) for
+    # relocating a particle when its target voxel is already at max occupancy.
+    _dna_site_arr = (np.array([[v[2], v[1], v[0]] for v in DNA_lattice_coords.values()],
+                              dtype=np.int64)
+                     if DNA_lattice_coords else None)
 
     for locusTag, locusDict in genome.items():
         
@@ -404,7 +835,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
                 
                 newStartXYZ = DNA_lattice_coords[start]
 
-                lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), geneID)
+                _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], geneID, _dna_site_arr)
 
                 print('Placed new gene for ', locusTag)
                     
@@ -424,7 +855,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
                         deleteParticle(plattice, int(oldStartXYZ[2]), int(oldStartXYZ[1]), int(oldStartXYZ[0]), geneID)
 
-                        lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), geneID)
+                        _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], geneID, _dna_site_arr)
 
                         continue
 
@@ -436,7 +867,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
                             deleteParticle(plattice, int(oldStartXYZ[2]), int(oldStartXYZ[1]), int(oldStartXYZ[0]), trscID)
 
-                            lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), trscID)
+                            _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], trscID, _dna_site_arr)
 
                             break
 
@@ -446,7 +877,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
                             deleteParticle(plattice, int(oldStartXYZ[2]), int(oldStartXYZ[1]), int(oldStartXYZ[0]), trsc2ID)
 
-                            lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), trsc2ID)
+                            _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], trsc2ID, _dna_site_arr)
 
                             break
                     
@@ -458,7 +889,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
                         deleteParticle(plattice, int(oldStartXYZ[2]), int(oldStartXYZ[1]), int(oldStartXYZ[0]), geneID)
 
-                        lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), geneID)
+                        _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], geneID, _dna_site_arr)
                         
                         continue
 
@@ -466,7 +897,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
                         deleteParticle(plattice, int(oldStartXYZ[2]), int(oldStartXYZ[1]), int(oldStartXYZ[0]), trscID)
 
-                        lattice.addParticle(int(newStartXYZ[2]), int(newStartXYZ[1]), int(newStartXYZ[0]), trscID)
+                        _safe_add_dna_particle(lattice, newStartXYZ[2], newStartXYZ[1], newStartXYZ[0], trscID, _dna_site_arr)
                         
                         continue
                     
@@ -494,7 +925,7 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
             deleteParticle(plattice, int(oldPartXYZ[2]), int(oldPartXYZ[1]), int(oldPartXYZ[0]), partIdx)
 
-            lattice.addParticle(int(newPartXYZ[2]), int(newPartXYZ[1]), int(newPartXYZ[0]), partIdx)
+            _safe_add_dna_particle(lattice, newPartXYZ[2], newPartXYZ[1], newPartXYZ[0], partIdx, _dna_site_arr)
         
     print('Placed chemically relevant DNA particles')
         
@@ -535,11 +966,29 @@ def runNewChromosome(time, sim_properties):
 
 #         os.system('rm ' + LAMMPStraj)
     
-    DNAargs = [headDir + 'btree_chromo/build/apps/btree_chromo', DirectivesFname]
+    _btree_build = os.environ.get('BTREE_BUILD_DIR', 'build')
+    DNAargs = [headDir + 'btree_chromo/' + _btree_build + '/apps/btree_chromo', DirectivesFname]
     
-#     Popen(DNAargs, stdin=None, stdout=None, stderr=None)
+    # Get DNA GPU ID from environment (set by sbatch script as container GPU 1)
+    # Inside Docker, GPUs are renumbered: first GPU = 0 (RDME), second GPU = 1 (DNA)
+    dna_gpu_id = os.environ.get("DNA_GPU_ID", "1")
+    # Create environment for subprocess with only the DNA GPU visible
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = str(dna_gpu_id)
 
-    Popen(DNAargs, stdin=None, stdout=subprocess.DEVNULL, stderr=None)
+    # (a) CPU isolation: pin btree_chromo (the concurrent BD process) to a
+    # dedicated core set disjoint from the RDME/LM host thread. During
+    # replication btree_chromo does heavy CPU-bound minimize/BD work that was
+    # descheduling the RDME host thread and inflating a fraction of inter-hook
+    # intervals (the mid-cycle stall). Configurable via DNA_CPU_CORES (e.g.
+    # "80-103,192-215"); no pinning if unset or taskset is unavailable.
+    launch_cmd = DNAargs
+    dna_cores = os.environ.get("DNA_CPU_CORES", "").strip()
+    if dna_cores and shutil.which("taskset"):
+        launch_cmd = ["taskset", "-c", dna_cores] + DNAargs
+        print("btree_chromo pinned to CPUs {} (taskset)".format(dna_cores))
+
+    Popen(launch_cmd, stdin=None, stdout=subprocess.DEVNULL, stderr=None, env=env)
     
     lastStep = sim_properties['last_DNA_step']
     
@@ -577,8 +1026,6 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
     
     processor_number = 8 #25
     
-    loop_number = int(sim_properties['counts']['P_0415']/2)
-    
     DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
     
     DnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(timestep)
@@ -603,8 +1050,10 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
     
     with open(DirectivesFname, 'w') as f:
 
+        loop_seed = _loop_prng_seed(sim_properties, timestep)
         f.write('btree_prng_seed:10\n')
         f.write('replicator_prng_seed:10\n')
+        f.write('loop_prng_seed:{:d}\n'.format(loop_seed))
 
 #         f.write('new_chromo:54338\n')
         
@@ -626,8 +1075,8 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
             
         if not sim_properties['division_started']:
             f.write('spherical_bdry:{:d},0,0,0\n'.format(int(cyto_radius_angstroms - sim_properties['lattice_spacing']*10/1e-9)))
-            
-        if sim_properties['division_started']:
+        else:
+            # Same replicate hook as pre-division; only the membrane boundary shape changes.
             cyto_radius_angstroms = int((sim_properties['divR']) * 10 - sim_properties['lattice_spacing']*10/1e-9)
             cyto_height_angstroms = int((sim_properties['divH']) * 10)
             f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(cyto_height_angstroms, cyto_radius_angstroms))
@@ -646,7 +1095,7 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
         f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
         f.write('simulator_set_prng_seed:{:d}\n'.format(rng_number))
         f.write('simulator_set_nProc:{:d}\n'.format(processor_number))
-        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model_kk\n')
+        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/' + os.environ.get('DNA_MODEL_DIR_NAME', 'LAMMPS_DNA_model_kk') + '\n')
 #         f.write('simulator_set_output_details:' + workDir + ',chromosome_{:d}\n'.format(timestep))
         f.write('simulator_set_output_details:' + workDir + ',chromosome\n'.format(timestep))
 
@@ -656,57 +1105,17 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
         f.write('switch_twisting_angles:F\n')
         f.write('switch_ellipsoids:F\n')
         
-#         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
-#         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
-        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
-        
 #         f.write('switch_Ori_bdry_attraction:T\n')
 #         f.write('switch_Ori_pair_repulsion:T\n')
-        
-        if rep_started:
-            
-            if sim_properties['last_DNA_step'] is None:
-                repCw = 40
-                repCcw = 40
-            else:
-                repCw, repCcw = getReplicatedSegments(sim_properties)
-                
-            f.write('set_initial_state\n')
-            f.write('transform:m_cw' + str(repCw) + '_ccw' + str(repCcw) + '\n')
-            f.write('set_final_state\n')
-            f.write('map_replication\n')
-            
+
         f.write('dump_topology:'+ workDir +'chromo_topo_{:d}.dat,1\n'.format(timestep))
 
         f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        
-        f.write('simulator_relax_progressive:1000,500\n')
-        
+
+        _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_started)
+
         f.write('sync_simulator_and_system\n')
-        
-#         f.write('switch_fork_partition_repulsion:T\n')
-        
-#         f.write('sync_simulator_and_system\n')
-        
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        
-        if sim_properties['last_DNA_step'] is None:
-            f.write('switch_fork_partition_repulsion:T\n')
-            f.write('simulator_run_loops:{:d},10000,10000,10000,noappend,first\n'.format(loop_number))
-        else:
-            if not checkDaughtersFullyPartitioned(sim_properties):
-                print('DNA not fully partitioned yet; running loops with fork partition force ON')
-                f.write('switch_fork_partition_repulsion:T\n')
-            else:
-                print('DNA is fully partitioned; running loops with fork partition force OFF')
-            f.write('simulator_run_loops:{:d},10000,10000,10000,append,skip_first\n'.format(loop_number))
-        
-#         f.write('repeat:2\n')
-#         f.write('simulator_run_loops:{:d},1000,100,100,append,nofirst\n'.format(loop_number))
-#         f.write('end_repeat\n')
-#         f.write('simulator_run_soft_FENE:20000,10000,10000,append,skip_first\n')
-        f.write('sync_simulator_and_system\n')
-    
+
         #if not updateRegions:
         #    f.write('load_ribo_coords:' + RiboFname + ',row\n')
         
@@ -718,13 +1127,11 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
     
         #f.write('sync_simulator_and_system\n')
     
-        f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
-        
-#         f.write('write_mono_quats:' + DnaQuatFname + ',row\n')
-        
-#         f.write('write_mono_xyz:' + DnaXyzFname + '\n')
-        
         f.write('write_mono_coords:' + DnaBinFname + ',row\n')
+
+        f.write('write_loops:' + _loops_file(sim_properties, timestep) + '\n')
+
+        f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
         
 #         if rep_started:
         
@@ -812,7 +1219,7 @@ def remapDNA(sim_properties):
     ori_ter_rotation_factor = int(chromosome_length/2)
     
     workDir = sim_properties['working_directory']+'DNA/'
-    RepTopoFname = workDir +'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    RepTopoFname = _ensure_chromo_topo(sim_properties)
     
     repTopoFile = open(RepTopoFname, 'r')
     lines = repTopoFile.readlines()
@@ -907,7 +1314,7 @@ def getReplicatedSegments(sim_properties):
     ori_ter_rotation_factor = int(chromosome_length/2)
     
     workDir = sim_properties['working_directory']+'DNA/'
-    RepTopoFname = workDir +'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    RepTopoFname = _ensure_chromo_topo(sim_properties)
     
     repTopoFile = open(RepTopoFname, 'r')
     lines = repTopoFile.readlines()
@@ -1009,185 +1416,6 @@ def getReplicatedSegments(sim_properties):
 
 
 #########################################################################################
-def writeDivisionChromosomeInputFile(time, sim_properties):
-
-    headDir = sim_properties['dna_software_directory']
-    workDir = sim_properties['working_directory']+'DNA/'
-    
-    rep_started = sim_properties['rep_started']
-    
-    cyto_radius_angstroms = int((sim_properties['cyto_radius'])*sim_properties['lattice_spacing']*10/1e-9)
-    timestep = int(time/sim_properties['timestep'])
-    
-    rng_number = int(timestep/10000+sim_properties['dna_rng_seed'])
-    
-    processor_number = 8 #25
-    
-    loop_number = int(sim_properties['counts']['P_0415']/2)
-    
-    DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
-    
-    DnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(timestep)
-    
-    try:
-        PrevDnaBinFname = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    except:
-        PrevDnaBinFname = workDir + 'x_chain_Syn3A_chromosome_init_rep00001.bin'
-    
-    RiboFname = workDir + 'ribo_obstacles_{:d}.bin'.format(timestep)
-    
-    MemBoundaryFname = workDir + 'mem_boundary_{:d}.bin'.format(timestep)
-    
-    DnaXyzFname = workDir + 'dna_monomers_{:d}.xyz'.format(timestep)
-    
-    DnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(timestep)
-    
-    try:
-        PrevDnaQuatFname = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    except:
-        PrevDnaQuatFname = None
-    
-    with open(DirectivesFname, 'w') as f:
-
-        f.write('btree_prng_seed:10\n')
-        f.write('replicator_prng_seed:10\n')
-        
-        if not rep_started:
-            f.write('new_chromo:54338\n')
-        else:
-            f.write('input_state:' + workDir + 'rep_state_{:d}.txt\n'.format(sim_properties['last_DNA_step']))
-
-        f.write('load_BD_lengths:' + sim_properties['head_directory'] + 'input_data/in_BD_lengths_LAMMPS_test.txt\n')
-        
-        f.write('load_mono_coords:' + PrevDnaBinFname + ',row\n')
-            
-        # Create the division cell shape
-        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(int(sim_properties['divH_Prev']*10), int(sim_properties['divR_Prev']*10 - sim_properties['lattice_spacing']*10/1e-9)))
-            
-        # Set simulator parameters and paths
-        f.write('prepare_simulator:' + workDir + 'log_{:d}.log\n'.format(timestep))
-        f.write('simulator_set_prng_seed:{:d}\n'.format(rng_number))
-        f.write('simulator_set_nProc:{:d}\n'.format(processor_number))
-        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model_kk\n')
-
-        f.write('simulator_set_output_details:' + workDir + ',chromosome\n'.format(timestep))
-
-        f.write('simulator_set_delta_t:1.0E+5\n')
-        
-        # TURN OFF TWISTING #
-        f.write('switch_twisting_angles:F\n')
-        f.write('switch_ellipsoids:F\n')
-        
-        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
-            
-        f.write('dump_topology:'+ workDir +'chromo_topo_{:d}.dat,1\n'.format(timestep))
-
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        
-        # Minimize in previous division shape
-        f.write('simulator_relax_progressive:1000,500\n')
-        
-        f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
-        
-        f.write('sync_simulator_and_system\n')
-        
-        # Calculate change in membrane shape
-        bead_size = 3.4
-        
-        divHdiff = sim_properties['divH'] - sim_properties['divH_Prev']
-        divRdiff = sim_properties['divR'] - sim_properties['divR_Prev']
-        
-        #Progressively change membrane shape to new geometry
-        if divHdiff>bead_size or divRdiff>bead_size:
-            
-            Hsteps = int(divHdiff/bead_size+1)
-            Rsteps = int(divRdiff/bead_size+1)
-            
-            div_steps = max(Hsteps,Rsteps)
-            
-            Hdelt = divHdiff/div_steps
-            Rdelt = divRdiff/div_steps
-            
-            for i in range(int(div_steps)):
-            
-                divHA = int((sim_properties['divH_Prev'] + (i+1)*Hdelt)*10)
-                divRA = int((sim_properties['divR_Prev'] + (i+1)*Rdelt)*10 - sim_properties['lattice_spacing']*10/1e-9)
-
-                f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
-                f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-                f.write('simulator_relax_progressive:1000,500\n')
-                f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
-                f.write('sync_simulator_and_system\n')
-            
-        
-        # Minimize in the new division shape
-        divHA = int(sim_properties['divH']*10)
-        divRA = int(sim_properties['divR']*10 - sim_properties['lattice_spacing']*10/1e-9)
-
-        f.write('overlapping_spheres_bdry:{:d},{:d},0,0,0,0,0,1\n'.format(divHA,divRA))
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        f.write('simulator_relax_progressive:1000,500\n')
-        f.write('simulator_run_soft_FENE:100,50,50,append,skip_first\n')
-        f.write('sync_simulator_and_system\n')
-        
-        # Run looping
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-
-        if not checkDaughtersFullyPartitioned(sim_properties):
-            f.write('switch_fork_partition_repulsion:T\n')
-        f.write('simulator_run_loops:{:d},10000,10000,10000,append,skip_first\n'.format(loop_number))
-        
-        f.write('sync_simulator_and_system\n')
-        
-        # Run some BD steps so that the minimized chromosome state is recorded
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
-        
-        f.write('simulator_minimize_soft_harmonic:500\n')
-        f.write('simulator_run_topoDNA_FENE:1000,500,500,append,skip_first\n')
-    
-        f.write('sync_simulator_and_system\n')
-    
-        # Write out the monomer coordinates of the configuration in the new membrane shape
-        f.write('output_state:' + workDir + 'rep_state_{:d}.txt\n'.format(timestep))
-        
-        f.write('write_mono_coords:' + DnaBinFname + ',row\n')
-    
-    return None
-#########################################################################################
-
-
-#########################################################################################
-def runDivChromosome(time, sim_properties):
-    """
-    Inputs:
-    Returns:
-    Called by:
-    Description:
-    """
-    
-    timestep = int(time/sim_properties['timestep'])
-    
-#     timestep = sim_properties['timestep']
-    
-#     os.system('LAMMPS_NEW_LOAD twistable_BD_OMP')
-    
-    headDir = sim_properties['dna_software_directory']
-    workDir = sim_properties['working_directory']+'DNA/'
-    
-#     DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
-
-    DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
-    
-    DNA_executable = headDir + 'btree_chromo/build/apps/btree_chromo ' + DirectivesFname
-    print(DNA_executable)
-    
-    os.system(DNA_executable)
-    
-    return None
-#########################################################################################
-
-
-#########################################################################################
 def rotateChromosome(time, sim_properties):
     
     workDir = sim_properties['working_directory']+'DNA/'
@@ -1207,7 +1435,7 @@ def rotateChromosome(time, sim_properties):
     chromosome_length = 54338
 
     # Read replication state topology
-    RepTopoFname = workDir +'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    RepTopoFname = _ensure_chromo_topo(sim_properties)
 
     repTopoFile = open(RepTopoFname, 'r')
     lines = repTopoFile.readlines()
@@ -1294,6 +1522,9 @@ def rotateChromosome(time, sim_properties):
 def checkDaughtersFullyPartitioned(sim_properties):
     print('Checking DNA Spatial Partitioning Status')
 
+    if sim_properties['last_DNA_step'] is None:
+        return False
+
     workDir = sim_properties['working_directory'] + 'DNA/'
     DNAfile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
 
@@ -1304,7 +1535,7 @@ def checkDaughtersFullyPartitioned(sim_properties):
     DNAcoords = DNAbin.reshape((3, DNAbin.shape[0] // 3), order='F').T
 
     # Read replication state topology
-    RepTopoFname = workDir + 'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    RepTopoFname = _ensure_chromo_topo(sim_properties)
     with open(RepTopoFname, 'r') as repTopoFile:
         lines = repTopoFile.readlines()
 
@@ -1345,31 +1576,47 @@ def rescueDNA(sim_properties):
     print(sim_properties['last_last_DNA_step'])
 
     workDir = sim_properties['working_directory']+'DNA/'
-    
-    oldDNAFile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_last_DNA_step'])
-    
-    rescueDNAFile = workDir + 'dna_monomers_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    
-    os.system('cp ' + oldDNAFile + ' ' + rescueDNAFile)
-    
-#     oldQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_last_DNA_step'])
-    
-#     rescueQuatFile = workDir + 'dna_quats_{:d}.bin'.format(sim_properties['last_DNA_step'])
-    
+
+    last_step = sim_properties['last_DNA_step']
+    prev_step = sim_properties['last_last_DNA_step']
+
+    rescueDNAFile = workDir + 'dna_monomers_{:d}.bin'.format(last_step)
+
+    if prev_step is not None:
+        # Reuse the previous good DNA step's full state.
+        oldDNAFile    = workDir + 'dna_monomers_{:d}.bin'.format(prev_step)
+        oldRepState   = workDir + 'rep_state_{:d}.txt'.format(prev_step)
+        oldChromoTopo = workDir + 'chromo_topo_{:d}.dat'.format(prev_step)
+        oldLoops      = _loops_file(sim_properties, prev_step)
+    else:
+        # btree failed on the very first DNA hook (no prior step to fall back on):
+        # restore the initial pre-replication chromosome. rep_state/loops do not
+        # exist yet; chromo_topo is synthesized below for remapDNA.
+        oldDNAFile    = workDir + 'x_chain_Syn3A_chromosome_init_rep00001.bin'
+        oldRepState   = None
+        oldChromoTopo = None
+        oldLoops      = None
+
+#     oldQuatFile = workDir + 'dna_quats_{:d}.bin'.format(prev_step)
+#     rescueQuatFile = workDir + 'dna_quats_{:d}.bin'.format(last_step)
 #     os.system('cp ' + oldQuatFile + ' ' + rescueQuatFile)
-    
-    oldRepState = workDir + 'rep_state_{:d}.txt'.format(sim_properties['last_last_DNA_step'])
-                                                          
-    rescueRepState = workDir + 'rep_state_{:d}.txt'.format(sim_properties['last_DNA_step'])
-                                                          
-    os.system('cp ' + oldRepState + ' ' + rescueRepState)
-    
-    oldChromoTopo = workDir + 'chromo_topo_{:d}.dat'.format(sim_properties['last_last_DNA_step'])
-    
-    rescueChromoTopo = workDir + 'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
-    
-    os.system('cp ' + oldChromoTopo + ' ' + rescueChromoTopo)
-    
+
+    if oldDNAFile and os.path.isfile(oldDNAFile):
+        os.system('cp ' + oldDNAFile + ' ' + rescueDNAFile)
+    else:
+        print('WARNING rescueDNA: no source DNA config found ({}); leaving as-is'.format(oldDNAFile))
+
+    if oldRepState and os.path.isfile(oldRepState):
+        os.system('cp ' + oldRepState + ' ' + workDir + 'rep_state_{:d}.txt'.format(last_step))
+
+    if oldChromoTopo and os.path.isfile(oldChromoTopo):
+        os.system('cp ' + oldChromoTopo + ' ' + workDir + 'chromo_topo_{:d}.dat'.format(last_step))
+    else:
+        _write_prereplication_chromo_topo(sim_properties, last_step)
+
+    if oldLoops and os.path.isfile(oldLoops):
+        os.system('cp ' + oldLoops + ' ' + _loops_file(sim_properties, last_step))
+
     return None
 #########################################################################################
 
@@ -1390,7 +1637,7 @@ def partitionChromosomes(sim_properties):
     DNAcoords = DNAbin.reshape((3, DNAbin.shape[0] // 3), order='F').T
 
     # Read replication state topology
-    RepTopoFname = workDir + 'chromo_topo_{:d}.dat'.format(sim_properties['last_DNA_step'])
+    RepTopoFname = _ensure_chromo_topo(sim_properties)
     with open(RepTopoFname, 'r') as repTopoFile:
         lines = repTopoFile.readlines()
 
@@ -1553,14 +1800,13 @@ def writePartitioningChromosomeInputFile(sim_properties, chromoID, PrevDnaBinFna
         f.write('prepare_simulator:' + workDir + 'log_{}_{:d}.log\n'.format(chromoID,sim_properties['last_DNA_step']))
         f.write('simulator_set_prng_seed:{:d}\n'.format(69))
         f.write('simulator_set_nProc:8\n')
-        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/LAMMPS_DNA_model_kk\n')
+        f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/' + os.environ.get('DNA_MODEL_DIR_NAME', 'LAMMPS_DNA_model_kk') + '\n')
         f.write('simulator_set_output_details:' + workDir + ',partitioning_{}\n'.format(chromoID))
         f.write('simulator_set_delta_t:1.0E+5\n')
         
 #         f.write('simulator_load_loop_params:'+ headDir + 'btree_chromo/test_case/loop_params.txt\n')
-#         f.write('simulator_load_loop_params:'+ headDir + 'loop_params.txt\n')
-#         f.write('simulator_load_loop_params:/home/zane/Models/brgdna/division_testing/loop_params.txt\n')
-        f.write('simulator_load_loop_params:'+ sim_properties['head_directory'] + 'input_data/loop_params.txt\n')
+        loop_params_path = _write_loop_params_file(sim_properties, _num_smc(sim_properties))
+        f.write('simulator_load_loop_params:' + loop_params_path + '\n')
 
 #         f.write('switch_Ori_bdry_attraction:T\n')
 #         f.write('switch_Ori_pair_repulsion:T\n')
@@ -1686,7 +1932,7 @@ def runPartitioningChromosome(DirectivesFname, sim_properties):
 
 #     DirectivesFname = workDir + 'chromosome_operations_{:d}.inp'.format(timestep)
     
-    DNA_executable = headDir + 'btree_chromo/build/apps/btree_chromo ' + DirectivesFname
+    DNA_executable = headDir + 'btree_chromo/' + os.environ.get('BTREE_BUILD_DIR', 'build') + '/apps/btree_chromo ' + DirectivesFname
     print(DNA_executable)
     
     os.system(DNA_executable)

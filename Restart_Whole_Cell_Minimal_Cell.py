@@ -107,6 +107,10 @@ sim_properties_file = workingDirectory + 'sim_properties.pkl'
 #########################################################################################
 sim, sim_properties = MCRDME.initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, totalTime=totalTime)
 
+# CRASH RECOVERY: Concatenate any orphaned CSV files from previous crash
+# This handles temp files left behind if the simulation stopped abruptly
+save.recoverFromCrash(sim_properties)
+
 restart_time = int(round(sim_properties['time']))
 backup_sim_properties = workingDirectory + 'sim_properties_{:d}.pkl'.format(restart_time)
 os.system("cp %s %s"% (sim_properties_file, backup_sim_properties))

@@ -311,7 +311,15 @@ def defineRandomBindingRxns(model, sim_properties):
             
         EnzymeConc = getEnzymeConc(rxn_params, sim_properties)
         
-        model.addParameter(rxnIndx, "Enzyme", EnzymeConc)
+        # "Enzyme" is the ONLY per-step-varying parameter in the ODE model (it tracks
+        # the current enzyme copy number). Give it a non-trivial bound (lb != ub) so
+        # getOptSpace() includes it: that routes its value through the compiled
+        # functor's self.params[] array instead of baking it as a literal. This is
+        # what lets Integrate.setSolverCached compile the flux module once and reuse
+        # it every step (the value is refilled via self.params, not recompiled).
+        # The bound is never enforced at runtime (no optimizer runs here); it is a
+        # pure "this is an updatable parameter" flag. See Integrate.setSolverCached.
+        model.addParameter(rxnIndx, "Enzyme", EnzymeConc, lb=0, ub=1e9)
         
         model.addParameter(rxnIndx, "onoff", 1, lb=0, ub=1)
         

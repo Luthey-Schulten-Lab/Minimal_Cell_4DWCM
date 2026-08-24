@@ -83,10 +83,19 @@ def getParticlesInSite(particles, x, y, z):
     Returns:
     Called by:
     Description:
+    Optimized version that avoids unnecessary copies while maintaining performance
+    for both small and large particle counts per site.
     """
     
-    ps = np.array([p for p_ in particles[:,z,y,x,:] for p in p_ if p != 0])
+    # Get the site slice - shape is (N, 16) where N is first dimension
+    site_slice = particles[:, z, y, x, :]
     
-#     print(ps)
+    # Use reshape instead of ravel to avoid potential copy
+    # Reshape to 1D without copying (if possible) - more efficient than ravel()
+    flat_particles = site_slice.reshape(-1)
+    
+    # Filter non-zero particles - boolean indexing is fast for NumPy arrays
+    # This is faster than list comprehension when called many times (like in ribosome code)
+    ps = flat_particles[flat_particles != 0]
     
     return ps

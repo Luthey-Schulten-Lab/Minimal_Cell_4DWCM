@@ -1,0 +1,52 @@
+--- a/src/btree_driver.cpp
++++ b/src/btree_driver.cpp
+@@ -3651,15 +3651,12 @@ int btree_driver::load_loops(std::vector<std::string> &params)
+ 
+   std::cout << "Setting N to " << size << std::endl;
+   driver_ls.set_N(size);
+-  std::cout << "Setting M" << std::endl;
+-
+-  int N_init = driver_ls.get_N_initial();
+-  int M_init = driver_ls.get_numSmc_initial();
+-  int extra_loops = M_init * (size - N_init) / N_init;
+-  driver_ls.set_M(M_init + extra_loops);
+-
+   std::cout << "Setting loop state..." << std::endl;
+   driver_ls.read_state(params[0]);
++
++  std::cout << "Setting M from loop_params numSmc (loaded "
++            << driver_ls.get_loaded_loop_count() << " loops)" << std::endl;
++  driver_ls.sync_M_to_loaded();
++  driver_ls.set_M(driver_ls.get_numSmc_initial());
++
+   std::cout << "Updating loop bonds..." << std::endl;
+   driver_lmp_simulator.update_loop_bonds(true, driver_ls); // possible bug - will not re-write existing loops
+   return 0;
+@@ -3998,11 +3995,6 @@ int btree_driver::map_replication()
+ 
+   std::cout << "Setting new N to " << size << std::endl;
+   driver_ls.set_N(size);
+-  std::cout << "Setting new M" << std::endl;
+-  int N_init = driver_ls.get_N_initial();
+-  int M_init = driver_ls.get_numSmc_initial();
+-  int extra_loops = M_init * (size - N_init) / N_init;
+-  driver_ls.set_M(M_init + extra_loops);
+   return e;
+ }
+ 
+--- a/src/btree_driver.cpp
++++ b/src/btree_driver.cpp
+@@ -3636,10 +3636,8 @@ int btree_driver::translocate(std::vector<std::string> &params)
+   if (params[1] == "T")
+   {
+-    // driver_lmp_simulator.update_loop_bonds(true, driver_ls);
+     driver_ls.steps(stoi(params[0]), true);
+   } else {
+-    // driver_lmp_simulator.update_loop_bonds(false, driver_ls);
+-    driver_ls.steps(stoi(params[0]), true);
++    driver_ls.steps(stoi(params[0]), false);
+   }
+   return 0;
+ }
+ 
+

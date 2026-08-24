@@ -220,9 +220,12 @@ class MyOwnSolver:
 
                     self.region_dict = region_dict
 
-                self.next_DNA_time = self.next_DNA_time + 4.0
+                _dna_hook_s = float(self.sim_properties.get('dna_hook_interval_s', 4.0))
+                self.next_DNA_time = self.next_DNA_time + _dna_hook_s
                 
-                print('DNA time: ', TIME.time()-dnastart)
+                print('DNA time: ', TIME.time()-dnastart,
+                      '(next DNA @ {:.1f}s, interval={:.1f}s)'.format(
+                          self.next_DNA_time, _dna_hook_s))
 
                 print('Updated cell architecture')
 
@@ -248,7 +251,7 @@ class MyOwnSolver:
 
             ribo_site_dict = ribosomesRDME.placeRibosomes(lattice, self.sim_properties, self.region_dict, self.ribo_site_dict, updateTranslat=updateTranslat)
 
-            region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, self.region_dict)
+            region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, self.region_dict, self.sim_properties)
 
             self.region_dict = region_dict
 
@@ -348,11 +351,14 @@ class MyOwnSolver:
             
             self.complete_steps = 1
             
+            self.endLastHook = TIME.time()
+            
             return 2
         
         else:
             print('Return 1 time: ', time)
             self.complete_steps = self.complete_steps + 1
+            self.endLastHook = TIME.time()
             return 1
 #             return 1
  
