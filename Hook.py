@@ -3,8 +3,9 @@ RDME hook solver for the 4DWCM.
 
 Authors
 -------
-Alfia Parvez
-Zane Thornburg
+Alfia Parvez — performance optimizations (ODE Cython cache, ribosome EV cadence,
+    CME/count communication, file-save path, DNA-hook timing integration)
+Zane Thornburg — original hook algorithm and 4DWCM coupling structure
 
 Coordinates growth/division, chromosome BD, ribosome placement, global CME,
 and ODE metabolism at each RDME interrupt.
