@@ -12,13 +12,12 @@ Brief summary of changes on this branch relative to `main` for coupling 4DWCM to
 
 ## btree_chromo (external build)
 
-Patches in [`btree_chromo_wcm/`](btree_chromo_wcm/README.md) applied to a local `btree_chromo_gpu` build under `external_software/` (not committed):
+Use **`btree_chromo_gpu` `protein_science`** (current tip). WCM-specific SMC
+handling is already upstream: `numSmc` from `loop_params.txt` is authoritative
+(no replication-length scaling), `sync_M_to_loaded()` + `set_M(numSmc_initial)`
+after `read_state`, and `translocate:...,F` passes `tag_extruded=false`.
 
-- Use **`numSmc` from `loop_params.txt`** instead of scaling SMC count with replicated chromosome length.
-- **`sync_M_to_loaded()` + `set_M(numSmc_initial)`** after `read_state` so a 51st SMC is born when the loops file has fewer rows than RDME requests (fixes `create_bonds` atom 0 errors).
-- **`translocate:...,F`** passes `tag_extruded=false`.
-
-Rebuild `btree_chromo` after patching; point `-dsd` at the directory containing `btree_chromo/`.
+Point `-dsd` at the directory containing the built `btree_chromo/`.
 
 ## Reference trees
 

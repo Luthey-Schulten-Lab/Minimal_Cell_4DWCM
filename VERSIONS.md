@@ -74,8 +74,8 @@ in the paper.
 | RDME / CME | [Lattice_Microbes_2.6](https://github.com/luthey-schulten-chemistry/Lattice_Microbes_2.6) | `master` | `75c0205` |
 | Container | local Docker | `4dcell-optimize:cuda128` | image tag on the machine |
 
-Also apply / use the WCM patches under `btree_chromo_wcm/` as described in the
-`protein_science` section of `README.md`.
+Chromosome BD already includes WCM SMC-count behavior on current
+`protein_science` (no separate patch step).
 
 ### Checkout
 
@@ -88,7 +88,6 @@ git checkout protein_science   # or: git checkout 5fa6919
 git clone -b protein_science \
   https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git btree_chromo_gpu
 cd btree_chromo_gpu && git checkout ce1d839 && cd ..
-# apply btree_chromo_wcm patches per btree_chromo_wcm/README.md
 ```
 
 ### Launchers (this lab)

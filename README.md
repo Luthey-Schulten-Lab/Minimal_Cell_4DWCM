@@ -47,10 +47,9 @@ Install these before running (same conda env for LM + odecell):
 | sc_chain_generation | https://github.com/Luthey-Schulten-Lab/sc_chain_generation |
 | FreeDTS (optional) | https://github.com/weria-pezeshkian/FreeDTS |
 
-Apply the small WCM patches under [`btree_chromo_wcm/`](btree_chromo_wcm/README.md)
-when building `btree_chromo` for this pipeline. See
-[`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md) for coupling details and
-[`VERSIONS.md`](VERSIONS.md) for pinned commits used in production runs.
+Use current `protein_science` btree_chromo (SMC count from `loop_params` / WCM
+proteome is already upstream). See [`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md)
+for coupling details and [`VERSIONS.md`](VERSIONS.md) for pinned commits.
 
 ---
 
