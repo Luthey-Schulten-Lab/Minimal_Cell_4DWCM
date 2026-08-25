@@ -14,8 +14,8 @@ and host-side bookkeeping).
 
 Typical full-cycle cost ($7200\,\mathrm{s}$ biological time):
 
-- Unoptimized reference: multi-day (published A100) / ~79 h (B200 baseline)
-- This branch (production): approximately **27 hours** on 2 B200 GPUs
+- Unoptimized reference: multi-day (published A100) / ~79 h (NVIDIA B200 baseline)
+- This branch (production): approximately **27 hours** on 2 NVIDIA B200 GPUs
 - On this branch, chromosome dynamics follow the SMC-mediated segregation framework
 of Maytin *et al.* (*Protein Science*, 2026): SMC loops persist across DNA hooks
 (dwell time ≫ $4\,\mathrm{s}$ coupling interval).
