@@ -15,7 +15,7 @@ and host-side bookkeeping).
 Typical full-cycle cost ($7200\,\mathrm{s}$ biological time):
 
 - Unoptimized reference: multi-day (published A100) / ~79 h (B200 baseline)
-- This branch (production): **~$\mathbf{30\,\mathrm{h}}$** on dual GPUs
+- This branch (production): approximately ** 27 hours** on 2 B200 GPUs
 
 ---
 
