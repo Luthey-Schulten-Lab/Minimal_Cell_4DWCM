@@ -23,9 +23,16 @@ ARG BTREE_NVCC_ARCH=sm_80
 ARG LM_REPO=https://github.com/Luthey-Schulten-Lab/Lattice_Microbes.git
 ARG LM_REF=master
 ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
-ARG BTREE_REF=protein_science
+# The commit the 26.8 h production run built from. `protein_science` currently
+# points here, but it is a moving branch, so the run is pinned to the SHA.
+ARG BTREE_REF=1725d1bb0247df1090baf19e31b3124289ff8964
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
+# Commits present in 4dcell-optimize:cuda128, the image the 26.8 h production
+# run (job 2413) used. That job rebuilds only LM and btree_chromo, so these two
+# are exactly what it ran against.
+ARG ODECELL_REF=b19413f2f8c1a88d1fe619e09ad9beb7953ccb96
+ARG SC_CHAIN_REF=501a0679f8ab5d0f61f9cda1522b3efbf1800266
 ARG LAMMPS_GIT_URL=https://github.com/lammps/lammps.git
 # Pinned, not develop. btree_chromo's fix_brownian_kokkos uses the pre-2025
 # Kokkos ArrayTypes API (t_x_array, t_v_array, t_f_array_const). Upstream has
@@ -64,7 +71,12 @@ RUN source /opt/conda/etc/profile.d/conda.sh && \
     conda clean -afy
 
 # ---------- odecell ----------
-RUN git clone --depth 1 "${ODECELL_REPO}" /Software/odecell
+# Fetched by SHA rather than cloned by branch: `git clone --branch` accepts only
+# branch and tag names, so a commit pin needs an explicit shallow fetch.
+RUN mkdir -p /Software/odecell && cd /Software/odecell && \
+    git init -q && git remote add origin "${ODECELL_REPO}" && \
+    git fetch -q --depth 1 origin "${ODECELL_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN source /opt/conda/etc/profile.d/conda.sh && \
     conda activate lm_2.5_dev && \
@@ -77,7 +89,10 @@ RUN source /opt/conda/etc/profile.d/conda.sh && \
     pip install .
 
 # ---------- sc_chain_generation ----------
-RUN git clone --depth 1 "${SC_CHAIN_REPO}" /Software/sc_chain_generation
+RUN mkdir -p /Software/sc_chain_generation && cd /Software/sc_chain_generation && \
+    git init -q && git remote add origin "${SC_CHAIN_REPO}" && \
+    git fetch -q --depth 1 origin "${SC_CHAIN_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN source /opt/conda/etc/profile.d/conda.sh && conda activate lm_2.5_dev && \
     cd /Software/sc_chain_generation/src && make gen_sc_chain && \
@@ -152,7 +167,10 @@ ENV CC=/usr/local/bin/gcc \
 RUN mkdir -p ${LAMMPS_src} && \
     git clone --depth 1 --branch "${LAMMPS_GIT_REF}" "${LAMMPS_GIT_URL}" "${LAMMPS_src}/lammps"
 
-RUN git clone --depth 1 --branch "${BTREE_REF}" "${BTREE_REPO}" /Software/btree_chromo
+RUN mkdir -p /Software/btree_chromo && cd /Software/btree_chromo && \
+    git init -q && git remote add origin "${BTREE_REPO}" && \
+    git fetch -q --depth 1 origin "${BTREE_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN set -eux; \
     L="${LAMMPS_src}/lammps"; \
