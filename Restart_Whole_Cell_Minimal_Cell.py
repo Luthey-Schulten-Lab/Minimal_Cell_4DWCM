@@ -28,6 +28,8 @@ ap.add_argument("-wd", "--workingDirectory", default=None)
 
 ap.add_argument("-mh", "--maximumHours", type=float, default=None)
 
+ap.add_argument("-DNA", "--DNADynamics", default='BD') # chromosome algorithm: BD (Brownian dynamics in LAMMPS) or lattice (Python surrogate)
+
 args = ap.parse_args()
 #########################################################################################
 
@@ -114,6 +116,8 @@ sim_properties_file = workingDirectory + 'sim_properties.pkl'
 
 #########################################################################################
 sim, sim_properties = MCRDME.initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, totalTime=totalTime)
+
+sim_properties['dna_algorithm'] = args.DNADynamics
 
 # Restore count/flux CSV state after an abrupt stop.
 save.recoverFromCrash(sim_properties)

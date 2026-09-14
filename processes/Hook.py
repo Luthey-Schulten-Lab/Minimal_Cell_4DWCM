@@ -11,6 +11,8 @@ Coordinates growth/division, chromosome BD, ribosome placement, global CME,
 and ODE metabolism at each RDME interrupt.
 """
 
+from modules.DNA_Dynamics import DNA_Dynamics
+
 import processes.Growth as growth
 import processes.Division as division
 import processes.RibosomesRDME as ribosomesRDME
@@ -84,6 +86,10 @@ class MyOwnSolver:
         
         self.translation_update_step = 8
         self.ribo_step = 0
+
+        # Chromosome algorithm, selected by the -DNA flag on the entry point.
+        self.dna = DNA_Dynamics(sim_properties,
+                                sim_properties.get('dna_algorithm', 'BD'))
 
         # Prefer Cython ODE solver with a build-once cache (see Integrate.setSolverCached).
         self._ode_use_cython = True
@@ -191,13 +197,9 @@ class MyOwnSolver:
 
                         print('REPLICATION STARTED')
                         
-                if self.sim_properties['division_started'] and updateRegions:
-                    
-                    region_dict, DNA_lattice_coords, genome = DNA.updateChromosomeDivision(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict)
-                    
-                else:
-
-                    region_dict, DNA_lattice_coords, genome = DNA.updateChromosome(time, lattice, self.sim_properties, self.region_dict, self.ribo_site_dict, updateRegions)
+                region_dict, DNA_lattice_coords, genome = self.dna.run(
+                    time, lattice, self.sim_properties, self.region_dict,
+                    self.ribo_site_dict, updateRegions)
 
                 self.region_dict = region_dict
 
