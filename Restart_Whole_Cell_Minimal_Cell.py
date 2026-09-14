@@ -52,15 +52,15 @@ from lm import IntMpdRdmeSolver
 
 # import MC_RDME_initialization as initialization
 
-import RegionsAndComplexes as InitGeom
+import processes.RegionsAndComplexes as InitGeom
 
-import Restart_MC_RDME_initialization as MCRDME
+import restart.Restart_MC_RDME_initialization as MCRDME
 
-import ImportInitialConditions as IC
+import processes.ImportInitialConditions as IC
 
-import Communicate as communicate
+import processes.Communicate as communicate
 
-import FileSaving as save
+import utility.FileSaving as save
 #########################################################################################
 
 
@@ -160,7 +160,7 @@ MCRDME.constructAssemblyReactions(sim, sim_properties)
 
 
 #########################################################################################
-import Restart_Hook as Hook
+import restart.Restart_Hook as Hook
 
 mc4dSolver = Hook.MyOwnSolver
 

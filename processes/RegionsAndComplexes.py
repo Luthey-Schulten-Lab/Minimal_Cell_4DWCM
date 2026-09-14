@@ -7,7 +7,7 @@ Initialize cell architecture and ribosome positions in the RDME simulation
 from jLM.RegionBuilder import RegionBuilder
 import jLM
 
-import InitRdmeDna
+import processes.InitRdmeDna as InitRdmeDna
 
 import pandas as pd
 import numpy as np

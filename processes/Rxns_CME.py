@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict, OrderedDict
 
-import GIP_rates as GIP
+import utility.GIP_rates as GIP
 
 
 #########################################################################################

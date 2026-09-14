@@ -9,7 +9,7 @@ Zane Thornburg — original CME model construction and run path
 
 ##### CME Model #####
 
-import Rxns_CME
+import processes.Rxns_CME as Rxns_CME
 
 from pyLM import CME
 
@@ -42,7 +42,7 @@ _WORKER_DEAD = False  # latch: after worker death, use os.system
 
 
 def _worker_script_path(sim_properties):
-    return sim_properties['head_directory'] + 'Run_CME_Worker.py'
+    return sim_properties['head_directory'] + 'processes/Run_CME_Worker.py'
 
 
 def _ensure_worker(sim_properties):
@@ -191,7 +191,7 @@ def runGCME(sim_properties):
     solverstart = TIME.time()
     used_worker = _run_via_worker(sim_properties, CSIMfilename)
     if not used_worker:
-        pythonExecutable = sim_properties['head_directory'] + 'Run_CME.py'
+        pythonExecutable = sim_properties['head_directory'] + 'processes/Run_CME.py'
         os.system("python %s %s" % (pythonExecutable, CSIMfilename))
     solvertime = TIME.time() - solverstart
     if used_worker:

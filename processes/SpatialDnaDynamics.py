@@ -23,11 +23,11 @@ import time as timepy
 from Bio import SeqIO
 from Bio.Seq import Seq
 
-from LatticeFunctions import *
+from utility.LatticeFunctions import *
 
-import GIP_rates as GIP
+import utility.GIP_rates as GIP
 
-import FreeDTS_functions as fdf
+import processes.FreeDTS_functions as fdf
 
 
 # Biological time between DNA hook updates (seconds); must match Hook.next_DNA_time increment.

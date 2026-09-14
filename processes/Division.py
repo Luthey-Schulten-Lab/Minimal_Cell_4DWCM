@@ -19,11 +19,11 @@ from scipy.optimize import fsolve
 
 import time as TIME
 
-import RibosomesRDME as ribosomesRDME
+import processes.RibosomesRDME as ribosomesRDME
 
-import FreeDTS_functions as fdf
+import processes.FreeDTS_functions as fdf
 
-from LatticeFunctions import *
+from utility.LatticeFunctions import *
 
 
 #########################################################################################

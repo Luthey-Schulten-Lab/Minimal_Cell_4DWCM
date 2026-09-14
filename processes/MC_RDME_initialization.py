@@ -26,11 +26,11 @@ import importlib
 from collections import defaultdict, OrderedDict
 
 
-import Diffusion as Diff
+import processes.Diffusion as Diff
 
-import ImportInitialConditions as IC
+import processes.ImportInitialConditions as IC
 
-import Rxns_RDME
+import processes.Rxns_RDME as Rxns_RDME
 
 
 #########################################################################################

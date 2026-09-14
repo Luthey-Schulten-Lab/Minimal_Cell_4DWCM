@@ -9,7 +9,7 @@ Zane Thornburg — original ribosome placement and site update routines
 
 import numpy as np
 from scipy import spatial
-from LatticeFunctions import *
+from utility.LatticeFunctions import *
 
 # KDTree over outer-cytoplasm shell; rebuild when shell point count changes.
 _cached_tree = None

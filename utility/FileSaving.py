@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pySTDLM.PostProcessing as PP
 
-from LatticeFunctions import *
+from utility.LatticeFunctions import *
 
 
 #########################################################################################

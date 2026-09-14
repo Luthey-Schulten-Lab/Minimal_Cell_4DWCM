@@ -17,3 +17,6 @@ __pycache__/
 
 # Container build transcripts
 docker/*.log
+
+# jLM pyximport build output (created when the model is imported)
+pyxbld/

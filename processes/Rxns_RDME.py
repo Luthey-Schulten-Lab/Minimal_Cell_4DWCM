@@ -9,9 +9,9 @@ import pandas as pd
 import json
 from collections import defaultdict, OrderedDict
 
-import GIP_rates as GIP
+import utility.GIP_rates as GIP
 
-import Diffusion as Diff
+import processes.Diffusion as Diff
 
 
 #########################################################################################

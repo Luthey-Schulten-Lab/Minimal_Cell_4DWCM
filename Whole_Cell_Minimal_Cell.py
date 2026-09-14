@@ -63,15 +63,15 @@ from lm import IntMpdRdmeSolver
 
 # import MC_RDME_initialization as initialization
 
-import RegionsAndComplexes as InitGeom
+import processes.RegionsAndComplexes as InitGeom
 
-import MC_RDME_initialization as MCRDME
+import processes.MC_RDME_initialization as MCRDME
 
-import ImportInitialConditions as IC
+import processes.ImportInitialConditions as IC
 
-import Communicate as communicate
+import processes.Communicate as communicate
 
-import FileSaving as save
+import utility.FileSaving as save
 #########################################################################################
 
 
@@ -116,7 +116,7 @@ save.saveCountsAndFluxes(0, sim_properties, None, None, None)
 
 
 #########################################################################################
-import Hook
+import processes.Hook as Hook
 
 mc4dSolver = Hook.MyOwnSolver
 

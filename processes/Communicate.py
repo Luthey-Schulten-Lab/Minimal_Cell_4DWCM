@@ -25,12 +25,12 @@ from jLM import Lattice as jLMLattice
 
 import time as timepy
 
-from LatticeFunctions import *
+from utility.LatticeFunctions import *
 
 from scipy.optimize import fsolve
 from scipy.optimize import least_squares
 
-import MC_CME as MCCME
+import processes.MC_CME as MCCME
 
 #########################################################################################
 def updateCountsRDME(RDMEsim, sim_properties, lattice):
