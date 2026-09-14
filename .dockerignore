@@ -1,0 +1,12 @@
+# Build context for docker/Dockerfile (repo root)
+Data/
+**/Data/
+**/.git/
+**/__pycache__/
+**/*.pyc
+**/*.so
+**/.pytest_cache/
+**/cythonCompiledFunctions.c
+docker/*.log
+*.lm
+*.pkl
