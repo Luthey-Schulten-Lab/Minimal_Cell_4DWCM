@@ -27,7 +27,12 @@ ARG BTREE_REF=protein_science
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
 ARG LAMMPS_GIT_URL=https://github.com/lammps/lammps.git
-ARG LAMMPS_GIT_REF=develop
+# Pinned, not develop. btree_chromo's fix_brownian_kokkos uses the pre-2025
+# Kokkos ArrayTypes API (t_x_array, t_v_array, t_f_array_const). Upstream has
+# since moved those behind the mixed-precision refactor (KK_ACC_FLOAT), so
+# newer LAMMPS fails to compile the DNA additions. This is the release the
+# production images were built from.
+ARG LAMMPS_GIT_REF=stable_22Jul2025
 ARG N_PROC_MAKE=
 
 ENV DEBIAN_FRONTEND=noninteractive
