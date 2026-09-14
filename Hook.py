@@ -90,7 +90,7 @@ class MyOwnSolver:
         self._ode_cython_failed = False
         self._ode_solver_cache = {}
 
-        # Ribosome EV placement every hook; translation_update_step gates polysome updates.
+        # Ribosome placement every hook; translation_update_step gates polysome updates.
         self.ribo_place_every_n_hooks = 1
         self._ribo_place_counter = 0
 

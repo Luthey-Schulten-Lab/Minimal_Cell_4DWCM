@@ -1,3 +1,11 @@
+"""
+Restart entry point for a saved 4DWCM Minimal Cell run.
+
+Authors
+-------
+Alfia Parvez — crash recovery for count/flux CSVs; uses optimized Restart_Hook
+Zane Thornburg — original restart driver
+"""
 
 import argparse
 import os
@@ -107,9 +115,29 @@ sim_properties_file = workingDirectory + 'sim_properties.pkl'
 #########################################################################################
 sim, sim_properties = MCRDME.initSimRestart(sim_properties_file, workingDirectoryName, headDirectory, totalTime=totalTime)
 
-# CRASH RECOVERY: Concatenate any orphaned CSV files from previous crash
-# This handles temp files left behind if the simulation stopped abruptly
+# Restore count/flux CSV state after an abrupt stop.
 save.recoverFromCrash(sim_properties)
+
+# Fill DNA/SMC knobs if missing from older checkpoints (no-ops when already set).
+_dna_defaults = {
+    'dna_hook_interval_s': 4.0,
+    'dna_loop_translocate_bps': 500,
+    'dna_loop_equilibrate_steps': 360000,
+    'dna_smc_bound_fraction': 0.5,
+    'dna_initial_soft_harmonic_steps': 10000,
+    'dna_initial_soft_harmonic_output': 20000,
+    'dna_bd_walltime_scale': 77.0 / 132.0,
+    'dna_bd_run_steps': 20000,
+}
+for _k, _v in _dna_defaults.items():
+    sim_properties.setdefault(_k, _v)
+_env = (os.environ.get('DNA_HOOK_INTERVAL_SEC') or os.environ.get('DNA_HOOK_INTERVAL_S') or '').strip()
+if _env:
+    sim_properties['dna_hook_interval_s'] = float(_env)
+os.makedirs(sim_properties['working_directory'] + 'DNA/loops/', exist_ok=True)
+
+if 'profile_ribosomes' not in sim_properties:
+    sim_properties['profile_ribosomes'] = True
 
 restart_time = int(round(sim_properties['time']))
 backup_sim_properties = workingDirectory + 'sim_properties_{:d}.pkl'.format(restart_time)

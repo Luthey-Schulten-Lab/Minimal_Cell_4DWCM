@@ -1,21 +1,13 @@
 """
-Authors: Zane Thornburg
+General lattice helpers.
 
-General lattice functions
+Authors
+-------
+Alfia Parvez — faster ``getParticlesInSite`` (reshape + boolean filter)
+Zane Thornburg — original lattice utilities
 """
 
 import numpy as np
-
-# From Tyler Biopolymers
-# def deleteParticle(particles, x, y, z, pid):
-#     ps = np.array([p for p_ in particles[:,z,y,x,:] for p in p_ if p != pid])
-#     pps = 16 # Particles Per Site
-# #     pps = cfg.particlesPerSite # Don't know how Tyler added pps as argument to his config
-#     ps.resize(pps)
-#     ps = ps.reshape((particles.shape[0], particles.shape[4]))
-#     particles[:,z,y,x,:] = ps
-    
-#     return None
 
 
 from math import floor
@@ -79,23 +71,10 @@ def checkParticle(particles, x, y, z, pid):
     
 def getParticlesInSite(particles, x, y, z):
     """
-    Inputs:
-    Returns:
-    Called by:
-    Description:
-    Optimized version that avoids unnecessary copies while maintaining performance
-    for both small and large particle counts per site.
+    Return non-zero particle IDs at lattice site ``(x, y, z)``.
     """
-    
-    # Get the site slice - shape is (N, 16) where N is first dimension
     site_slice = particles[:, z, y, x, :]
-    
-    # Use reshape instead of ravel to avoid potential copy
-    # Reshape to 1D without copying (if possible) - more efficient than ravel()
     flat_particles = site_slice.reshape(-1)
-    
-    # Filter non-zero particles - boolean indexing is fast for NumPy arrays
-    # This is faster than list comprehension when called many times (like in ribosome code)
     ps = flat_particles[flat_particles != 0]
     
     return ps

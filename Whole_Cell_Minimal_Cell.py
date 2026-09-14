@@ -1,8 +1,16 @@
+"""
+Fresh-start entry point for the 4DWCM Minimal Cell simulation.
+
+Authors
+-------
+Alfia Parvez — wall-clock timing;
+Zane Thornburg — original driver and CLI
+"""
 
 import argparse
 
 import os
-import time  # Add time import
+import time
 
 #########################################################################################
 ap = argparse.ArgumentParser()
@@ -39,7 +47,6 @@ else:
 
 
 #########################################################################################
-# Start simulation timer
 sim_start_time = time.time()
 print("=" * 80)
 print("Starting simulation...")
@@ -120,7 +127,6 @@ solver = Solver(sim, sim_properties, region_dict, ribo_site_dict, termination_ti
 
 sim.finalize()
 
-# Start timer for simulation run
 sim_start_time = time.time()
 print('='*80)
 print('Starting simulation run...')
@@ -128,7 +134,6 @@ print('='*80)
 
 sim.run(solver=solver, cudaDevices=[int(args.cudaDevices)])
 
-# End timer and print results
 sim_end_time = time.time()
 total_sim_time = sim_end_time - sim_start_time
 hours = int(total_sim_time // 3600)

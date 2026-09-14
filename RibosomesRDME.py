@@ -1,28 +1,24 @@
 """
-Authors: Zane Thornburg
+Update ribosome excluded-volume sites on the RDME lattice.
 
-Updating ribosome positions on the RDME lattice
+Authors
+-------
+Alfia Parvez — KDTree cache, vectorized center/cross updates, faster site walks
+Zane Thornburg — original ribosome placement and site update routines
 """
 
 import numpy as np
 from scipy import spatial
 from LatticeFunctions import *
 
-# Module-level cache for KDTree (Optimization 1)
-# Note: Only caching tree and size to avoid expensive array comparisons
+# KDTree over outer-cytoplasm shell; rebuild when shell point count changes.
 _cached_tree = None
 _cached_she_coords_size = None
 
 #########################################################################################
 def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateTranslat=True, growth_step=False):
     """
-    Inputs:
-    lattice - LM lattice object including particle and site lattice
-    sim_properties - Dictionary of simulation variables and state trackers
-    
-    Returns:
-    Called by:
-    Description:
+    Place / relocate ribosome excluded-volume centers and crosses on the lattice.
     """
     global _cached_tree, _cached_she_coords_size
     
@@ -37,8 +33,7 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
     
     ribo_center_points = np.zeros((N_edges[0], N_edges[1], N_edges[2]), dtype=bool)
     
-    # Optimization 1: KDTree caching - only rebuild when cyto_shell size changes
-    # Note: We use size-based invalidation to avoid expensive array comparisons
+    # Rebuild KDTree when outer-cytoplasm shell size changes.
     she_coords = np.argwhere(cyto_shell==True)
     current_size = len(she_coords)
     
@@ -48,7 +43,7 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
             _cached_tree = tree
             _cached_she_coords_size = current_size
         else:
-            # No valid shell coordinates - reset and return
+            # Empty shell — clear EV masks and return.
             ribo_site_dict['ribos']['centers'] = np.zeros((N_edges[0], N_edges[1], N_edges[2]), dtype=bool)
             ribo_site_dict['ribos']['crosses'] = np.zeros((N_edges[0], N_edges[1], N_edges[2]), dtype=bool)
             return ribo_site_dict
@@ -58,12 +53,9 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
     RIBOidx = sim_properties['name_to_index']['ribosomeP']
     RIBOcoords = np.argwhere(plattice==RIBOidx)
     
-    # Optimization 2: Vectorized ribosome center updates
     if len(RIBOcoords) > 0:
         ribo_site_dict['ribos']['centers'][RIBOcoords[:, 1], RIBOcoords[:, 2], RIBOcoords[:, 3]] = True
     
-    # Optimization 3: Efficient collection of old ribosome sites
-    # Collect in a list first, then vstack once (more efficient than multiple vstacks)
     old_ribo_sites_list = []
     for ribo_type, type_dict in ribo_site_dict.items():
         ribo_center_sites = np.argwhere(type_dict['centers']==True)
@@ -75,16 +67,12 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
             old_ribo_sites_list.append(ribo_cross_sites)
     
     if not old_ribo_sites_list:
-        # No ribosomes to process
         ribo_site_dict['ribos']['centers'] = np.zeros((N_edges[0], N_edges[1], N_edges[2]), dtype=bool)
         ribo_site_dict['ribos']['crosses'] = np.zeros((N_edges[0], N_edges[1], N_edges[2]), dtype=bool)
         return ribo_site_dict
     
-    # Stack all sites at once (more efficient than multiple vstacks)
     old_ribo_sites = np.vstack(old_ribo_sites_list)
     
-    # Optimization 4: Process all sites with inline relocation checks
-    # (Inline checks avoid creating large intermediate boolean arrays)
     for riboSite in old_ribo_sites:
         x, y, z = riboSite[:]
         x_int, y_int, z_int = int(x), int(y), int(z)
@@ -95,9 +83,7 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
             if len(parts) > 0:
                 for particleIdx in parts:
                     if ribo_IDs[particleIdx-1]:
-                        # Check if relocation needed (inline check like original)
                         if (membrane[x_int, y_int, z_int] == True) or (extracellular[x_int, y_int, z_int] == True):
-                            # Need relocation - use KDTree
                             dist, sheCoordIdx = tree.query([x_int, y_int, z_int])
                             new_position = she_coords[sheCoordIdx]
                             
@@ -119,7 +105,6 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
                                     k_neighbors = min(10 * place_counter, len(she_coords))
                                     siteDists, siteIdxs = tree.query([x_int, y_int, z_int], k=k_neighbors)
                                     
-                                    # Handle single result case
                                     if k_neighbors == 1:
                                         siteIdxs = [siteIdxs]
                                     
@@ -157,15 +142,12 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
     if len(ribo_center_points_coords) == 0:
         return ribo_site_dict
     
-    # Optimization 5: Vectorized cross-voxel updates with bounds checking
     x = ribo_center_points_coords[:, 0]
     y = ribo_center_points_coords[:, 1]
     z = ribo_center_points_coords[:, 2]
     
-    # Set centers
     ribo_site_dict['ribos']['centers'][x, y, z] = True
     
-    # Set crosses with np.clip for bounds checking
     x_plus = np.clip(x + 1, 0, N_edges[0] - 1)
     x_minus = np.clip(x - 1, 0, N_edges[0] - 1)
     y_plus = np.clip(y + 1, 0, N_edges[1] - 1)
@@ -187,20 +169,9 @@ def placeRibosomes(lattice, sim_properties, region_dict, ribo_site_dict, updateT
 #########################################################################################
 def updateRiboSites(lattice, ribo_site_dict, region_dict, sim_properties=None):
     """
-    Inputs:
-    lattice - LM lattice object
-    ribo_site_dict - Dictionary of ribosome site information
-    region_dict - Dictionary of region information
-    sim_properties - Dictionary of simulation properties (optional, for compatibility)
-    
-    Returns:
-    region_dict - Updated region dictionary
-    
-    Called by:
-    Hook.py, Division.py, Restart_Hook.py
-    
-    Description:
-    Updates ribosome sites on the lattice based on current ribosome positions
+    Write updated ribosome center/cross masks onto the site lattice.
+
+    ``sim_properties`` is optional (call-site compatibility); unused here.
     """
     
     for ribo_type, type_dict in ribo_site_dict.items():
@@ -210,12 +181,11 @@ def updateRiboSites(lattice, ribo_site_dict, region_dict, sim_properties=None):
         old_centers = np.argwhere(region_dict[centerID]['shape']==True)
         
         if len(old_centers) > 0:
-            # Vectorized region checking
             cyto_mask = region_dict['cytoplasm']['shape'][old_centers[:, 0], old_centers[:, 1], old_centers[:, 2]]
             outer_cyto_mask = region_dict['outer_cytoplasm']['shape'][old_centers[:, 0], old_centers[:, 1], old_centers[:, 2]]
             dna_mask = region_dict['DNA']['shape'][old_centers[:, 0], old_centers[:, 1], old_centers[:, 2]]
             
-            # Process each region type (priority: cytoplasm > outer_cytoplasm > DNA)
+            # Priority: cytoplasm > outer_cytoplasm > DNA
             cyto_sites = old_centers[cyto_mask]
             for site in cyto_sites:
                 lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['cytoplasm']['index'])
@@ -231,13 +201,12 @@ def updateRiboSites(lattice, ribo_site_dict, region_dict, sim_properties=None):
         old_cross = np.argwhere(region_dict[crossID]['shape']==True)
         
         if len(old_cross) > 0:
-            # Vectorized region checking for crosses
             cyto_mask = region_dict['cytoplasm']['shape'][old_cross[:, 0], old_cross[:, 1], old_cross[:, 2]]
             outer_cyto_mask = region_dict['outer_cytoplasm']['shape'][old_cross[:, 0], old_cross[:, 1], old_cross[:, 2]]
             dna_mask = region_dict['DNA']['shape'][old_cross[:, 0], old_cross[:, 1], old_cross[:, 2]]
             extra_mask = region_dict['extracellular']['shape'][old_cross[:, 0], old_cross[:, 1], old_cross[:, 2]]
             
-            # Process each region type (priority: cytoplasm > outer_cytoplasm > DNA > extracellular)
+            # Priority: cytoplasm > outer_cytoplasm > DNA > extracellular
             cyto_sites = old_cross[cyto_mask]
             for site in cyto_sites:
                 lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['cytoplasm']['index'])
@@ -257,13 +226,11 @@ def updateRiboSites(lattice, ribo_site_dict, region_dict, sim_properties=None):
         region_dict[centerID]['shape'] = type_dict['centers']
         region_dict[crossID]['shape'] = type_dict['crosses']
 
-    # Set cross sites
     for ribo_type, type_dict in ribo_site_dict.items():
         crossID = type_dict['cross_idx']
         ribo_sites = np.argwhere(type_dict['crosses']==True)
         
         if len(ribo_sites) > 0:
-            # Vectorized checking
             membrane_mask = region_dict['membrane']['shape'][ribo_sites[:, 0], ribo_sites[:, 1], ribo_sites[:, 2]]
             dna_mask = region_dict['DNA']['shape'][ribo_sites[:, 0], ribo_sites[:, 1], ribo_sites[:, 2]]
             valid_mask = ~membrane_mask & ~dna_mask

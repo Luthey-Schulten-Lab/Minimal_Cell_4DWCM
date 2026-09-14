@@ -1,7 +1,9 @@
 """
-Authors: Zane Thornburg
+Cell morphology updates during division in 3D.
 
-Functions to update cell morphology during division in 3D
+Authors
+-------
+Zane Thornburg — original division morphology routines
 """
 
 from jLM.RegionBuilder import RegionBuilder
@@ -270,17 +272,6 @@ def buildNewDivRegions(RDMEsim, sim_properties, lattice, sim_center, region_dict
     membrane = cyto_dilation & ~cyto_shell & ~cytoplasm
     extracellular = ~cyto_dilation
     
-#     cytoplasm = cytoplasm & ~region_dict["DNA"]["shape"]
-#     cyto_shell = cyto_shell & ~region_dict["DNA"]["shape"]
-
-#     ribo_site_dict = ribosomesRDME.placeRibosomes(region_dict, ribo_site_dict, N_edges, ribo_IDs, lattice, growth_step=True)
-    
-#     region_dict['extracellular']['shape'] = extracellular
-#     region_dict['membrane']['shape'] = membrane
-#     region_dict['outer_cytoplasm']['shape'] = cyto_shell
-#     region_dict['cytoplasm']['shape'] = cytoplasm
-
-#     extracellular = ~membrane & ~cyto_shell & ~cytoplasm
 
     region_dict['extracellular']['shape'] = extracellular
     region_dict['membrane']['shape'] = membrane

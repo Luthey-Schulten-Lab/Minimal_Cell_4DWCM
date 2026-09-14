@@ -1,18 +1,17 @@
-# Author: alfiap (added 2026-05) -- persistent CME solver worker
-#
-# Long-lived Python process that holds `lm` + GillespieDSolver loaded once.
-# Reads CME .lm filenames from stdin (one per line), runs the solver in-process,
-# writes "DONE <fname>" or "ERR <fname> <message>" to stdout.
-#
-# Replaces the per-call `os.system("python Run_CME.py %s")` shell-out, which
-# pays ~0.5 s of `lm` import and CUDA-context init on every gCME (1 Hz).
-#
-# Protocol:
-#   stdin:  "<lm_filename>\n"     -> run solver on that file
-#           "EXIT\n"               -> shut down cleanly
-#           ""                     -> EOF, shut down cleanly
-#   stdout: "DONE <lm_filename>\n" on success
-#           "ERR <lm_filename>: <message>\n" on failure (worker keeps running)
+"""
+Persistent CME solver worker process.
+
+Authors
+-------
+Alfia Parvez — long-lived ``lm`` / GillespieDSolver worker for gCME hooks
+
+Protocol
+--------
+stdin:  ``<lm_filename>\\n`` run; ``EXIT\\n`` or EOF shut down
+stdout: ``DONE <fname>`` or ``ERR <fname>: <message>``
+
+Used by ``MC_CME`` instead of per-call ``os.system(Run_CME.py ...)``.
+"""
 
 import sys
 import traceback

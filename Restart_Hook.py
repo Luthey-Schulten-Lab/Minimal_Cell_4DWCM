@@ -1,7 +1,13 @@
 """
-Authors: Zane Thornburg
+RDME hook solver for restarted 4DWCM runs.
 
-Hook algorithm
+Authors
+-------
+Alfia Parvez — aligned with optimized Hook (ODE Cython cache, CME path,
+    ribosome placement gating); DNA hook interval; restart timing
+Zane Thornburg — original restart hook algorithm
+
+Same host path as ``Hook.py``, with biological time offset from the checkpoint.
 """
 
 import Growth as growth
@@ -24,6 +30,7 @@ import time as TIME
 
 import numpy as np
 import os
+from math import floor, log10
 
 from datetime import datetime
 
@@ -44,7 +51,6 @@ class MyOwnSolver:
         self.restart_time = sim_properties['time']
         print('Restart Time: ', self.restart_time)
 
-        # The time a which hook solver has been stepped into, initial value = 0
         self.hookStartTime = 60
         self.nextWriteStep = int(0)
         self.writeInterval = int(sim_properties['write_interval'])
@@ -58,75 +64,69 @@ class MyOwnSolver:
             start_timestamp = round(start_dt.timestamp())
             self.start_datetime = datetime.fromtimestamp(int(start_timestamp))
             self.final_simulation_time = None
-        
-#         self.sim_properties['fluxes'] = None
 
-#         self.sim_properties['rep_started'] = False
-        
-#         self.sim_properties['next_gamma_V'] = 0.99
-        
-#         self.sim_properties['gamma_V'] = 1.0
-        
-#         self.sim_properties['division_started'] = False
-        
+        # Keep checkpoint flags (rep_started, division_started, gamma_V, …).
         self.next_growth_time = self.restart_time + 1.0
-        
         self.next_gCME_time = self.restart_time + 1.0
-        
         self.next_DNA_time = self.restart_time + 0.0
-        
         self.next_metabolism_time = self.restart_time + 1.0
         
         self.translation_update_step = 8
         self.ribo_step = 0
-        
+
+        # Prefer Cython ODE solver with a build-once cache (see Integrate.setSolverCached).
+        self._ode_use_cython = True
+        self._ode_cython_failed = False
+        self._ode_solver_cache = {}
+
+        # Ribosome placement every hook; translation_update_step gates polysome updates.
+        self.ribo_place_every_n_hooks = 1
+        self._ribo_place_counter = 0
+
         self.endLastHook = TIME.time()
         
         self.region_dict = region_dict
         self.ribo_site_dict = ribo_site_dict
         
         self.N_edges = sim_properties['lattice_edges']
-        
-        self.ribo_IDs = sim_properties['riboIDs'] #ribo_IDs
-        
-        # self.sim_properties['last_last_DNA_step'] = None
+        self.ribo_IDs = sim_properties['riboIDs']
         
         try:
             csim_folder=sim_properties['working_directory']+'CME/'
-#             print(csim_folder)
             os.mkdir(csim_folder)
             print('Created global CME directory')
-        except:
+        except Exception:
             print('CME sim directory already exists')
             
         try:
             flux_folder=sim_properties['working_directory']+'fluxes/'
-#             print(csim_folder)
             os.mkdir(flux_folder)
             print('Created metabolic fluxes directory')
-        except:
+        except Exception:
             print('Metabolic fluxes directory already exists')
             
         try:
-            flux_folder=sim_properties['working_directory']+'restart_files/'
-#             print(csim_folder)
-            os.mkdir(flux_folder)
+            restart_folder=sim_properties['working_directory']+'restart_files/'
+            os.mkdir(restart_folder)
             print('Created restart files directory')
-        except:
-            print('Restart Files Directory directory already exists')
+        except Exception:
+            print('Restart files directory already exists')
+
+        # Ensure DNA/loops exists for SMC outputs on older checkpoints.
+        try:
+            os.makedirs(sim_properties['working_directory']+'DNA/loops/', exist_ok=True)
+        except Exception:
+            pass
             
 
         print('Initialized Solver')
 
         return None
         
-    # The hookSimulation method defined here will be called at every frame 
-    # write time.  The return value is either 0, 1, or 2, which will indicate 
-    # if we changed the state or not and need the lattice to be copied back 
-    # to the GPU before continuing.  If you do not return 1 or 2, your changes 
-    # will not be reflected.
     def hookSimulation(self, t, lattice):
-        
+        """Called each RDME interrupt. Return 1 or 2 to push lattice changes to the GPU."""
+
+        # ``t`` is time since this RDME file started; biological time is offset.
         time = t + self.restart_time
         
         print('Current biological time: ', time)
@@ -135,20 +135,14 @@ class MyOwnSolver:
         
         print('Time between hook steps: ', TIME.time()-self.endLastHook)
         
-        ##### Execution of Growth #####
-        
         if time == 0:
             
             communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
             
             IC.setCmeSpeciesList(self.sim_properties)
-        
-#         if (time >= self.hookStartTime):
+
         if (time > 0):
-        
-            ##### For jobs running on some machines, there might be a maximum allowed time. #####
-            ##### We terminate the simulation early to prevent recording errors. #####
-            
+
             if self.termination_time is not None:
                 
                 current_datetime = datetime.now()
@@ -166,8 +160,7 @@ class MyOwnSolver:
                         
                         raise Exception(f"Reached end of allowed simulation time after {elapsed_hours} hours. Solver will terminate without saving.")
             
-            ##### Update Chromosome Configuration and Cell Architecture #####
-
+            # Chromosome BD + morphology
             if (time >= self.next_DNA_time):
                 
                 print("Updating SA and Volume")
@@ -230,10 +223,7 @@ class MyOwnSolver:
                 print('Updated cell architecture')
 
 
-            ##### RDME Modification to Update Ribosome Positions and Polysome Structures #####
-
-            print("Moving ribosomes")
-            
+            # Ribosome excluded volume / polysomes
             ribostart = TIME.time()
 
             self.ribo_step = self.ribo_step + 1
@@ -248,49 +238,78 @@ class MyOwnSolver:
 
                 updateTranslat = False
 
+            self._ribo_place_counter += 1
+            should_place = (
+                updateTranslat
+                or (self._ribo_place_counter >= self.ribo_place_every_n_hooks)
+            )
 
-            ribo_site_dict = ribosomesRDME.placeRibosomes(lattice, self.sim_properties, self.region_dict, self.ribo_site_dict, updateTranslat=updateTranslat)
+            if should_place:
+                print("Moving ribosomes")
+                self._ribo_place_counter = 0
 
-            region_dict = ribosomesRDME.updateRiboSites(lattice, ribo_site_dict, self.region_dict, self.sim_properties)
+                ribo_site_dict = ribosomesRDME.placeRibosomes(
+                    lattice, self.sim_properties, self.region_dict, self.ribo_site_dict,
+                    updateTranslat=updateTranslat,
+                )
 
-            self.region_dict = region_dict
+                region_dict = ribosomesRDME.updateRiboSites(
+                    lattice, ribo_site_dict, self.region_dict, self.sim_properties,
+                )
 
-            self.ribo_site_dict = ribo_site_dict
-            
-            print('Ribo time: ', TIME.time()-ribostart)
+                self.region_dict = region_dict
+                self.ribo_site_dict = ribo_site_dict
 
-            print("Moved ribosomes")
+                print('Ribo time: ', TIME.time()-ribostart)
+                print("Moved ribosomes")
+            else:
+                print('Ribo time (skipped): ', TIME.time()-ribostart)
 
 
-            ##### Cell-wide (Global) CME for Well-Stirred Stochastic Reactions #####
-
+            # Global CME
             if (time >= self.next_gCME_time):
-                
+
                 cmestart = TIME.time()
 
+                prestart = TIME.time()
                 communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
-
                 communicate.calculateTranslationCosts(self.sim_properties, lattice)
-
                 communicate.updateLongGeneStates(self.sim_properties, lattice)
+                pretime = TIME.time() - prestart
 
+                cmesolverstart = TIME.time()
                 MCCME.runGCME(self.sim_properties)
+                cmesolvertime = TIME.time() - cmesolverstart
 
-                start = TIME.time()
+                poststart = TIME.time()
 
+                countsCMEstart = TIME.time()
                 communicate.updateCountsCME(self.sim_properties)
-
+                countsCMEtime = TIME.time() - countsCMEstart
+                
+                transStatesstart = TIME.time()
                 communicate.updateTranscriptionStates(self.sim_properties, lattice)
+                transStatestime = TIME.time() - transStatesstart
 
-                communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
+                # Skip redundant post-CME updateCountsRDME (next pre-CME rescans).
+                countsRDMetime = 0.0
+
+                posttime = TIME.time() - poststart
 
                 self.next_gCME_time = self.next_gCME_time + 1.0
                 
-                print('CME time: ', TIME.time()-cmestart)
+                totaltime = TIME.time() - cmestart
+                print('CME time breakdown:')
+                print('  Pre-CME Python:     {:.4f}s ({:.1f}%)'.format(pretime, 100*pretime/totaltime))
+                print('  CME solver (C++):    {:.4f}s ({:.1f}%)'.format(cmesolvertime, 100*cmesolvertime/totaltime))
+                print('  Post-CME Python:     {:.4f}s ({:.1f}%)'.format(posttime, 100*posttime/totaltime))
+                print('    updateCountsCME:      {:.4f}s ({:.1f}% of post-CME)'.format(countsCMEtime, 100*countsCMEtime/posttime if posttime > 0 else 0))
+                print('    updateTranscriptionStates: {:.4f}s ({:.1f}% of post-CME)'.format(transStatestime, 100*transStatestime/posttime if posttime > 0 else 0))
+                print('    updateCountsRDME:     {:.4f}s ({:.1f}% of post-CME)'.format(countsRDMetime, 100*countsRDMetime/posttime if posttime > 0 else 0))
+                print('  CME time:      {:.4f}s'.format(totaltime))
 
 
-            ##### ODE Integrator for Metabolism #####
-
+            # Metabolism (ODE)
             if (time >= self.next_metabolism_time):
 
                 odestart = TIME.time()
@@ -303,21 +322,22 @@ class MyOwnSolver:
                 model = ODE.initModel(self.sim_properties)
                 print('Initialized ODE simulation')
 
-                ### Want to get the current values, not necessarily the initial values
-                initVals=integrate.getInitVals(model)
+                initVals = integrate.getInitVals(model)
 
-                ### Boolean control of cython compilation, versus scipy ODE solvers
-#                         if (self.cythonBool == True):
-#                             solver=integrate.setSolver(model)
-#                         else:
-                solver=integrate.noCythonSetSolver(model)
+                if self._ode_use_cython and not self._ode_cython_failed:
+                    try:
+                        solver = integrate.setSolverCached(model, self._ode_solver_cache)
+                    except Exception as exc:
+                        print(f"ODE: Cython solver build failed ({exc}); falling back to noCython for the remainder of the run.")
+                        self._ode_cython_failed = True
+                        self._ode_solver_cache = {}
+                        solver = integrate.noCythonSetSolver(model)
+                else:
+                    solver = integrate.noCythonSetSolver(model)
 
-                ### Run the integrator
                 odeResults = integrate.runODE(initVals, solver, model)
 
                 communicate.updateCountsODE(self.sim_properties, odeResults, model)
-
-#                         save.saveODEfluxes(time, self.sim_properties, odeResults, model, solver)
 
                 self.next_metabolism_time = self.next_metabolism_time + 1.0
 
@@ -326,26 +346,20 @@ class MyOwnSolver:
         
         if (self.complete_steps>=80) or (self.complete_steps==0):
             
+            # Gate on RDME-local time ``t`` so we do not save until ~1 s into this restart.
             if t>0.99:
                 
                 filestart = TIME.time()
-                
-                communicate.updateCountsRDME(self.rdme, self.sim_properties, lattice)
-                
-#                 communicate.calculateCosts(self.sim_properties, lattice)
-                
-#                 save.saveParticleCounts(time, self.sim_properties)
-        
+
+                # Skip extra updateCountsRDME; counts were refreshed earlier in this hook.
                 save.saveCountsAndFluxes(time, self.sim_properties, odeResults, model, solver)
-        
+
                 communicate.resetCostCounters(self.sim_properties)
-                
+
                 save.writeSimProp(self.sim_properties)
-                
+
                 save.writeLatticeFiles(self.sim_properties, lattice, self.region_dict)
                 print('Communication and file write time: ', TIME.time()-filestart)
-                
-#                 communicate.communicateCostsToMetabolism(self.sim_properties)
                 
             print('Return 2 time: ', time)
             
@@ -360,12 +374,10 @@ class MyOwnSolver:
             self.complete_steps = self.complete_steps + 1
             self.endLastHook = TIME.time()
             return 1
-#             return 1
- 
-    
-# Just a convenient function for rounding a value "x" 
-# to a given number of significant figures "sigs"
+
+
 def round_sig(x, sig=2):
+    """Round ``x`` to ``sig`` significant figures."""
     negative = False
     if x < 0:
         negative = True

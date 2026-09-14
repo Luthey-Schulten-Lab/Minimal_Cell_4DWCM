@@ -1,6 +1,11 @@
-# Author: Zane Thornburg
+"""
+Restart RDME initialization from a saved checkpoint.
 
-###### Genetic Information Processes Reactions RDME  #######
+Authors
+-------
+Alfia Parvez — fall back to ``MinCell.lm`` when timestamped restart file is missing
+Zane Thornburg — original restart initialization
+"""
 
 import numpy as np
 

@@ -1,7 +1,11 @@
 """
-Authors: Zane Thornburg
+Particle-count and state exchange between RDME, CME, ODE, and morphology.
 
-Functions that communicate particle counts at hook times.
+Authors
+-------
+Alfia Parvez — performance optimizations (fast RDME census, direct HDF5 CME
+    reads, DNAcoords guards after replication)
+Zane Thornburg — original communication routines
 """
 
 import numpy as np
@@ -31,21 +35,11 @@ import MC_CME as MCCME
 #########################################################################################
 def updateCountsRDME(RDMEsim, sim_properties, lattice):
     """
-    Inputs:
-    
-    sim_properties - Dictionary of simulation variables and state trackers
-    lattice - LM lattice object including particle and site lattice
-    
-    Returns:
-    Called by:
-    Description:
+    Update ``sim_properties['counts']`` from the RDME particle lattice.
+
+    Uses a direct lattice census (species totals only) instead of
+    ``particleStatistics`` full per-region dicts.
     """
-    
-    # Only countBySpecies is needed here, so we call the compiled lattice
-    # census directly and skip particleStatistics' expensive per-region dict
-    # construction (5489 species x 7 regions). This is ~80x faster and
-    # produces identical species counts. See Communicate.updateCountsRDME
-    # benchmark: particleStatistics ~6.0 s vs direct census ~75 ms.
     pLat = lattice.getParticleLatticeView()
     sLat = lattice.getSiteLatticeView()
 
@@ -56,14 +50,11 @@ def updateCountsRDME(RDMEsim, sim_properties, lattice):
 
     pCount = np.asarray(pCount)
 
-    # countBySpecies = sum of particle counts over all region rows. Only the
-    # real region rows are populated, so restrict the sum to them for speed
-    # while remaining bit-identical to particleStatistics' full-column sum.
+    # Sum over populated region rows only (same totals as particleStatistics).
     nReg = max(rt.idx for rt in RDMEsim.regionList) + 1
     countBySpecies = pCount[:nReg].sum(axis=0)
 
-    # Cache name -> species.idx once; species() lookups are cheap but this
-    # avoids re-resolving every hook step.
+    # Cache name -> species.idx across hooks.
     idx_map = sim_properties.get('_rdme_species_idx')
     if idx_map is None:
         idx_map = {name: RDMEsim.species(name).idx
@@ -83,20 +74,10 @@ def updateCountsRDME(RDMEsim, sim_properties, lattice):
 #########################################################################################
 def updateCountsCME(sim_properties):
     """
-    Optimized version using direct HDF5 access for faster reads
-    
-    Inputs:
-    
-    sim_properties - Dictionary of simulation variables and state trackers
-    
-    Returns:
-    Called by:
-    Description:
+    Update counts from the latest global CME ``.lm`` via direct HDF5 reads.
     """
-    
     csimFolder = sim_properties['working_directory']+'CME/'
     CSIMfilename= csimFolder + 'cmeSim.%d.lm'%np.rint(sim_properties['time'])
-
 
     bad_cme = False
     max_retries = 3
@@ -104,34 +85,24 @@ def updateCountsCME(sim_properties):
     
     while not(bad_cme) and retry_count < max_retries:
         try:
-            # Open HDF5 file directly for faster access
             CMEsim = h5py.File(CSIMfilename, 'r')
             
-            # Get species names directly from HDF5
             par = CMEsim['Parameters']
             if 'SpeciesNames' in par:
                 namesDS = par['SpeciesNames'][:]
                 CMEspecies = [spec[0] for spec in namesDS.tolist()]
             else:
-                # Compatible with LM trajectory generated < 2.5
+                # LM trajectories generated before 2.5
                 CMEspecies = par.attrs['speciesNames'].decode('utf8').split(',')
             
-            # Get first replicate (CME typically has 1 replicate)
             sim = CMEsim['Simulations']
             if len(sim) == 0:
                 raise Exception("No simulations found in CME file")
             
-            replicate_key = next(iter(sim.keys()))  # e.g., "0000001"
+            replicate_key = next(iter(sim.keys()))
+            # Last timepoint for all species in one read.
+            last_counts = sim[replicate_key]['SpeciesCounts'][-1, :]
             
-            # OPTIMIZATION: Read ALL species counts in one operation
-            # Shape: (n_timepoints, n_species)
-            species_data = sim[replicate_key]['SpeciesCounts'][:]
-            
-            # Extract last timepoint for ALL species at once
-            # Shape: (n_species,) - one value per species
-            last_counts = species_data[-1, :]
-            
-            # Map counts back to species names
             for i, specie in enumerate(CMEspecies):
                 count = int(last_counts[i])
                 
@@ -144,11 +115,10 @@ def updateCountsCME(sim_properties):
             bad_cme = True
             
         except Exception as e:
-            # Ensure file is closed if opened
             if 'CMEsim' in locals():
                 try:
                     CMEsim.close()
-                except:
+                except Exception:
                     pass
             
             retry_count += 1
@@ -162,11 +132,10 @@ def updateCountsCME(sim_properties):
     
     print('Updated particle counts from global CME')
     
-    # Clean up file
     try:
         os.remove(CSIMfilename)
         print('Removed gCME File')
-    except:
+    except Exception:
         print('Nothing to delete')
     
     return None
@@ -278,7 +247,7 @@ def updateRNAstateShort(sim_properties, lattice, plattice, locusTag):
         except:
             continue
         
-        # Check if start/end indices exist in DNAcoords (may not exist after replication)
+        # Skip if coords missing (e.g. mid-replication).
         if start not in sim_properties['DNAcoords'] or end not in sim_properties['DNAcoords']:
             continue
         
@@ -375,7 +344,7 @@ def updateRNAstateLong(sim_properties, lattice, plattice, locusTag):
         except:
             continue
         
-        # Check if start/end indices exist in DNAcoords (may not exist after replication)
+        # Skip if coords missing (e.g. mid-replication).
         if start not in sim_properties['DNAcoords'] or end not in sim_properties['DNAcoords']:
             continue
             
@@ -532,7 +501,7 @@ def updateLongGeneStates(sim_properties, lattice):
                 except:
                     continue
 
-                # Check if start index exists in DNAcoords (may not exist after replication)
+                # Skip if coords missing (e.g. mid-replication).
                 if start not in sim_properties['DNAcoords']:
                     continue
 

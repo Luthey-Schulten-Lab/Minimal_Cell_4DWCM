@@ -1,9 +1,10 @@
 """
-Authors: Zane Thornburg
+Initial particle counts and DNA particle placement.
 
-Sets the initial conditions for particle counts.  
-
-Does not include initlialization of intermediates, for example bound states of RNAP to genes or Ribosomes to mRNA.
+Authors
+-------
+Alfia Parvez — robust DNA coordinate lookup (``_get_dna_coord``)
+Zane Thornburg — original initial-condition setup
 """
 
 import pandas as pd
@@ -465,10 +466,14 @@ def initializePromoterStrengths(sim_properties):
 
 
 def _get_dna_coord(DNAcoords, index):
-    """Get (x,y,z) for DNA index. Handles 1-based dict, 0-based dict, or 0-based array; clips if one past end."""
+    """
+    Return ``(x, y, z)`` for a DNA index.
+
+    Accepts 1-based or 0-based dict keys, or a 0-based array; warns and clips
+    if the index is one past the last coordinate.
+    """
     idx = int(index)
     if hasattr(DNAcoords, 'keys'):
-        # dict (often 1-based: keys 1..N)
         if idx in DNAcoords:
             return DNAcoords[idx]
         if idx - 1 in DNAcoords:
@@ -484,7 +489,6 @@ def _get_dna_coord(DNAcoords, index):
             'Genome and DNA coordinate length may be inconsistent.'
         )
     else:
-        # array-like (0-based)
         n = len(DNAcoords)
         if idx < 0 or idx >= n:
             if idx == n and n > 0:

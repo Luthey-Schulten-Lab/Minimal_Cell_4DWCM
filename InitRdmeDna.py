@@ -1,7 +1,10 @@
 """
-Authors: Zane Thornburg
+Initial RDME DNA configuration from sc_chain_generation (Benjamin Gilbert).
 
-Create an initial configuration for a single chromsome using sc_chain_generation program by Benjamin Gilbert
+Authors
+-------
+Alfia Parvez — robust DNA file extension parsing when paths contain dots
+Zane Thornburg — original chromosome initialization
 """
 
 import numpy as np
@@ -195,10 +198,7 @@ def assignDnaSites(sim_properties):
     
     DNAfile = sim_properties['working_directory']+'DNA/' + 'x_chain_Syn3A_chromosome_init_rep00001.xyz'
 
-    # Use os.path.splitext so dots in the output dir name (e.g. "btree2.0")
-    # don't break extension detection. .split('.')[1] gave the *second*
-    # dot-separated piece, not the extension, and silently fell through
-    # both the 'bin' and 'xyz' branches when the path had > 1 dot.
+    # splitext: dots in the working dir (e.g. btree2.0) must not break .xyz/.bin.
     import os
     fileType = os.path.splitext(DNAfile)[1].lstrip('.')
     

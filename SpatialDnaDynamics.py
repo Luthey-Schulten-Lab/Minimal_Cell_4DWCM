@@ -1,8 +1,11 @@
 """
-Authors: Zane Thornburg
+Chromosome configuration via btree_chromo (Benjamin Gilbert), including replication.
 
-Updates chromosome configuration from interaction with btree_chromo by Benjamin Gilbert
-Includes DNA replication
+Authors
+-------
+Alfia Parvez — SMC looping hooks, BD walltime scale, in-place LAMMPS update,
+    CPU isolation (``DNA_CPU_CORES``), topo/loops rescue paths
+Zane Thornburg — original btree_chromo coupling and DNA particle remap
 """
 
 import numpy as np
@@ -316,12 +319,7 @@ def _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_sta
         f.write('switch_fork_partition_repulsion:T\n')
 
     f.write('translocate:{:d},T\n'.format(_translocate_steps_for_hook(sim_properties)))
-    # (b) Single data round-trip: after call #1 this hook LAMMPS already holds the
-    # correct backbone topology + fork-partition groups, translocate only advanced
-    # the loop system on the CPU, and loop bonds are (re)applied by the following
-    # simulator_form_loops. So the 2nd full write+clear+read_data rebuild is
-    # unnecessary CPU-bound work that competed with the RDME host thread; replace
-    # it with an in-place coord scatter. Reversible via dna_second_roundtrip_inplace.
+    # Prefer in-place LAMMPS coord update vs a second full write/read (dna_second_roundtrip_inplace).
     if bool(sim_properties.get('dna_second_roundtrip_inplace', True)):
         f.write('sys_update_lammps_inplace:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
     else:
@@ -976,12 +974,7 @@ def runNewChromosome(time, sim_properties):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = str(dna_gpu_id)
 
-    # (a) CPU isolation: pin btree_chromo (the concurrent BD process) to a
-    # dedicated core set disjoint from the RDME/LM host thread. During
-    # replication btree_chromo does heavy CPU-bound minimize/BD work that was
-    # descheduling the RDME host thread and inflating a fraction of inter-hook
-    # intervals (the mid-cycle stall). Configurable via DNA_CPU_CORES (e.g.
-    # "80-103,192-215"); no pinning if unset or taskset is unavailable.
+    # Optional CPU isolation for btree_chromo via DNA_CPU_CORES + taskset.
     launch_cmd = DNAargs
     dna_cores = os.environ.get("DNA_CPU_CORES", "").strip()
     if dna_cores and shutil.which("taskset"):

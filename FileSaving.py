@@ -1,8 +1,11 @@
 """
-Authors: Zane Thornburg
-        alfiap (2026-05) -- async np.save for restart files (Patch 3)
+Write simulation outputs outside the main ``.lm`` RDME file.
 
-Functions that write simulation output to files other than the main .lm simulation file
+Authors
+-------
+Alfia Parvez — async lattice/restart saves, batched counts/fluxes CSV I/O,
+    crash/restart recovery for count–flux files
+Zane Thornburg — original particle-count, flux, and lattice file writers
 """
 
 import numpy as np
@@ -26,7 +29,7 @@ from LatticeFunctions import *
 
 
 #########################################################################################
-# Patch 3 (async np.save): the per-bucket lattice/region writes were ~0.78 s per
+# Patch (async np.save): the per-bucket lattice/region writes were ~0.78 s per
 # call x 14400 calls = ~3 h on the master thread in job 1638.  np.save on
 # multi-MB int8 arrays is dominated by pwrite() syscalls; offloading them to a
 # small worker pool lets the next hook start while the previous save flushes.
