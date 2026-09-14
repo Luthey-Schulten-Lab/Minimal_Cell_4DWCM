@@ -93,20 +93,51 @@ process and the KDTree cache.
 
 ## Target structure
 
+Adopted from `luthey-schulten-chemistry/Modularize_4DWCM_MinCell`, so the two
+efforts converge on one layout rather than diverging. Module filenames are kept
+as-is; only their directory changes.
+
 ```
-Whole_Cell_Minimal_Cell.py           thin shim, CLI unchanged
-Restart_Whole_Cell_Minimal_Cell.py   thin shim, CLI unchanged
-mincell4d/
-    __init__.py
-    core/        lattice.py, diffusion.py, gip_rates.py
-    model/       rxns_cme.py, rxns_rdme.py, rxns_ode.py, regions.py,
-                 initial_conditions.py
-    solvers/     cme.py, cme_worker.py, ode.py, rdme_init.py
-    coupling/    communicate.py, hook.py
-    chromosome/  spatial_dna.py, init_rdme_dna.py
-    morphology/  growth.py, division.py, ribosomes.py, freedts.py
-    io/          filesaving.py
+Whole_Cell_Minimal_Cell.py    entry point, CLI unchanged
+modules/                      swappable algorithm classes (the new layer)
+    SIM_State.py              simulation state container
+    Metabolism.py             ODE metabolism, or skip
+    DNA_Dynamics.py           chromosome BD in LAMMPS, or lattice surrogate
+processes/                    biological processes
+    Communicate.py  Diffusion.py  Division.py  FreeDTS_functions.py
+    Growth.py  Hook.py  ImportInitialConditions.py  InitRdmeDna.py
+    MC_CME.py  MC_RDME_initialization.py  RegionsAndComplexes.py
+    RibosomesRDME.py  Run_CME.py  Run_CME_Worker.py  Rxns_CME.py
+    Rxns_ODE.py  Rxns_RDME.py  SpatialDnaDynamics.py
+restart/                      restart entry point and its hooks
+    Restart_Hook.py  Restart_MC_RDME_initialization.py
+    Restart_Whole_Cell_Minimal_Cell.py
+utility/                      supporting helpers
+    FileSaving.py  GIP_rates.py  Integrate.py  LatticeFunctions.py
 ```
+
+The mapping from our flat tree to this layout is 1:1 for every module we share
+with the reference repo. Two files are ours alone and are placed by analogy:
+`Run_CME_Worker.py` joins `Run_CME.py` in `processes/`, and `setup_tmp.py`
+(a Cython build helper, not imported at runtime) stays at the root.
+
+### The point of `modules/`
+
+`modules/` is what makes stages swappable. Each class selects an
+implementation at construction and binds `self.run` to it, so the hook calls
+`self.dna.run(...)` without knowing which algorithm is active:
+
+```python
+if DNA_algorithm == 'BD':
+    self.run = self._run_BD        # chromosome BD in LAMMPS, needs a 2nd GPU
+else:
+    self.run = self._run_lattice   # cheap Python lattice surrogate
+```
+
+`Metabolism` does the same for `ODE` versus skipping it. Algorithm choice is
+exposed on the CLI (`-meta`, `-DNA`), so an expensive stage can be dropped
+without editing the hook. This is the part of the reference design that our
+optimization work does not otherwise have.
 
 ## Phases
 
@@ -137,11 +168,31 @@ Delete the three redundant `round_sig` definitions, keeping the one in
 `LatticeFunctions`. Replace all six `from LatticeFunctions import *` with
 explicit imports of the four names actually used.
 
-### Phase 3 — Create the package, move leaves upward
+### Phase 3 — Move files into the package layout
 
-Create `mincell4d/` with the subpackage skeleton. Move modules bottom-up
-(leaves first, entry points last) using `git mv` so history follows. After
-each move, rewrite importers and run the smoke test.
+Create `modules/`, `processes/`, `restart/`, `utility/` with `__init__.py` in
+each, and `git mv` every module into place so history follows. Then rewrite
+first-party imports to their package-qualified form, e.g.
+
+```python
+import processes.Communicate as communicate
+import utility.FileSaving as save
+```
+
+**Two runtime path strings break on this move** and are not caught by any
+import check, because `MC_CME` locates helper scripts by filename at runtime:
+
+```python
+MC_CME.py:45   head_directory + 'Run_CME_Worker.py'  -> 'processes/Run_CME_Worker.py'
+MC_CME.py:194  head_directory + 'Run_CME.py'         -> 'processes/Run_CME.py'
+```
+
+The first is especially dangerous: `_ensure_worker` checks `os.path.isfile`
+and silently falls back to the per-call `os.system` path when the script is
+missing. A missed edit therefore produces a correct but slower run — it
+reintroduces the ~0.5 s per-second `lm` import that the persistent worker was
+built to remove, with no error anywhere. The smoke test must assert the worker
+script resolves, not merely that `MC_CME` imports.
 
 ### Phase 4 — Unify the RDME initializers
 
@@ -150,11 +201,26 @@ starting with the duplicated `constructGIP`. These are more divergent (462
 differing lines) so this phase is deliberately last and may end up only
 sharing `constructGIP` rather than fully merging.
 
-### Phase 5 — Entry points become shims
+### Phase 5 — Introduce the swappable algorithm layer
 
-`Whole_Cell_Minimal_Cell.py` keeps its `argparse` block and delegates to
-`mincell4d.run`. The CLI, the Docker invocation, and the SLURM scripts are
-untouched.
+Add `modules/SIM_State.py`, `modules/Metabolism.py`, and
+`modules/DNA_Dynamics.py` following the reference implementation, and
+instantiate them in the entry point:
+
+```python
+metabolism = Metabolism(sim_properties, args.metabolism)
+dna        = DNA_Dynamics(sim_properties, args.DNADynamics)
+```
+
+`Hook` then calls `self.dna.run(...)` and the metabolism equivalent instead of
+calling `SpatialDnaDynamics` and `Rxns_ODE` directly. Two new CLI flags,
+`-meta` and `-DNA`, default to `ODE` and `BD` so existing commands behave
+exactly as before.
+
+This phase is where our optimizations and the reference design have to be
+reconciled: our `Hook` carries the cached Cython ODE solver and the ribosome
+placement gating, which the reference `Hook` does not. The strategy classes
+must wrap our optimized paths, not replace them.
 
 ## Verification
 
@@ -165,8 +231,11 @@ After every phase:
    interpreter and assert no `ImportError`, no circular import, and that
    `MC_CME._WORKER_PROC` and `RibosomesRDME._cached_tree` each resolve to a
    single object identity regardless of import path.
-3. **Import-graph check**: confirm the graph is still acyclic.
-4. **Entry-point check**: `python Whole_Cell_Minimal_Cell.py --help` and the
+3. **Runtime path check**: assert `Run_CME.py` and `Run_CME_Worker.py` exist at
+   the paths `MC_CME` builds from `head_directory`. Imports cannot catch this;
+   a wrong path degrades silently to the slow fallback.
+4. **Import-graph check**: confirm the graph is still acyclic.
+5. **Entry-point check**: `python Whole_Cell_Minimal_Cell.py --help` and the
    restart equivalent still parse their arguments.
 
 Note that none of this executes biology. A short run (60 s biological time)
