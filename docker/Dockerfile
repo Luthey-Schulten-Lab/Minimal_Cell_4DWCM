@@ -21,7 +21,12 @@ ARG KOKKOS_ARCH_FLAGS="-DKokkos_ARCH_AMPERE80=yes"
 ARG HOST_ARCH=ZEN3
 ARG BTREE_NVCC_ARCH=sm_80
 ARG LM_REPO=https://github.com/Luthey-Schulten-Lab/Lattice_Microbes.git
-ARG LM_REF=master
+# Public Lattice Microbes, pinned. The production runs built LM from a private
+# 2.6 tree; against that tree's committed state this differs almost entirely by
+# formatting, plus one real divergence: MPD_WORDS_PER_SITE is clamped to 16
+# there and is MPD_LATTICE_MAX_OCCUPANCY here. Our builds set that to 16, so the
+# two are identical. A build with occupancy above 16 would NOT be equivalent.
+ARG LM_REF=bc58524c2d76c1b84313672b72b140f7f40b7819
 ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
 # The commit the 26.8 h production run built from. `protein_science` currently
 # points here, but it is a moving branch, so the run is pinned to the SHA.
@@ -241,7 +246,10 @@ RUN set -eux; \
 # ---------- Lattice Microbes (public) ----------
 ENV LM_dir=/Software/Lattice_Microbes
 
-RUN git clone --depth 1 --branch "${LM_REF}" "${LM_REPO}" ${LM_dir}
+RUN mkdir -p ${LM_dir} && cd ${LM_dir} && \
+    git init -q && git remote add origin "${LM_REPO}" && \
+    git fetch -q --depth 1 origin "${LM_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
