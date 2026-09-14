@@ -18,9 +18,20 @@ Typical full-cycle cost ($7200\,\mathrm{s}$ biological time):
 - This branch (production): approximately **27 hours** on 2 NVIDIA B200 GPUs
 - On this branch, chromosome dynamics follow the SMC-mediated segregation framework
 of Maytin *et al.* (*Protein Science*, 2026): SMC loops persist across DNA hooks
-(dwell time ≫ $4\,\mathrm{s}$ coupling interval).
+(dwell time ≫ $4\,\mathrm{s}$ coupling interval). **Partitioning is driven by
+SMC alone** (no fictitious external force).
 
----
+Key defaults (tunable; see [`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md)
+and the manuscript SI):
+
+| Knob | Default | Role |
+|------|---------|------|
+| Translocation | 500 bp/s (`translocate:100,T` per 4 s hook) | Loop extrusion speed |
+| Dwell | `basal_death_prob=0.0002` (~200 s) | How long an SMC stays bound |
+| Active SMC | `int((P_0415/2)*0.5)` (~50 at *t*=0) | Bound dimers from RDME Smc count |
+
+Build `btree_chromo` from `btree_chromo_gpu` **`protein_science`** and use
+`input_data/loop_params.txt` (not the legacy / `simulator_run_loops` path).
 
 ## Dependencies
 
@@ -37,6 +48,35 @@ Install these before running (same conda env for LM + odecell):
 Use current `protein_science` btree_chromo (SMC count from `loop_params` / WCM
 proteome is already upstream). See [`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md)
 for coupling details and [`VERSIONS.md`](VERSIONS.md) for pinned commits.
+
+---
+
+## Docker (recommended for new users)
+
+A public CUDA image builds LM + odecell + sc_chain + Kokkos/LAMMPS +
+`btree_chromo` (`protein_science`) + this code. See **[`docker/README.md`](docker/README.md)**.
+
+```bash
+# From repo root — Ampere (A100 / many cloud GPUs), default
+chmod +x docker/build_*.sh docker/run_example.sh
+./docker/build_ampere.sh          # → 4dwcm:ampere  (long first build)
+
+# Other GPU profiles
+./docker/build_multi.sh           # → 4dwcm:multi
+./docker/build_blackwell.sh       # → 4dwcm:blackwell (B200)
+
+# Smoke run (needs NVIDIA Container Toolkit)
+mkdir -p Data
+./docker/run_example.sh 4dwcm:ampere docker_smoke 60
+```
+
+| Helper | Image | Hardware |
+|--------|-------|----------|
+| `docker/build_ampere.sh` | `4dwcm:ampere` | `sm_80` (default) |
+| `docker/build_multi.sh` | `4dwcm:multi` | multi-arch (slower/larger) |
+| `docker/build_blackwell.sh` | `4dwcm:blackwell` | `sm_100` (B200) |
+
+Full-cycle dual-GPU and build-arg details: [`docker/README.md`](docker/README.md).
 
 ---
 

@@ -1,30 +1,50 @@
-# protein_science branch — integration notes
+# protein_science chromosome coupling
 
-Brief summary of changes on this branch relative to `main` for coupling 4DWCM to **btree_chromo_gpu `protein_science`** (persistent SMC loops).
+Partitioning is driven by **SMC loop extrusion alone** (no fictitious external
+force). This branch couples the 4DWCM to
+[`btree_chromo_gpu`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu)
+branch **`protein_science`**, which persists SMC loop state across DNA hooks via
+`load_loops` / `write_loops` and `translocate`. That lets the model use SMC
+dwell times much longer than a single DNA hook interval (~4 s).
 
-## 4DWCM (this repo)
+Standalone examples of the same chromosome physics appear in
+[Minimal_Cell_ChromosomeSegregation](https://github.com/Luthey-Schulten-Lab/Minimal_Cell_ChromosomeSegregation)
+(Maytin *et al.*, *Protein Science*, 2026). Science detail and the default
+parameter table are also in the JCP manuscript **SI**.
 
-- **`SpatialDnaDynamics.py`** — DNA hooks follow `template_replicate.inp`: `load_loops`, `translocate`, `simulator_form_loops:F`, scaled `simulator_run_soft_harmonic` per 4 s hook; `numSmc` from RDME `P_0415` via `_num_smc()`; replication block when `rep_started`.
-- **`MC_RDME_initialization.py`** — defaults: `dna_hook_interval_s=4`, `dna_smc_bound_fraction=0.5`, `dna_loop_translocate_bps=500`, BD wall-time scale for hook 2+.
-- **`InitRdmeDna.py`** — `gen_sc_chain` obstacle path fix for init DNA.
-- **`Restart_MC_RDME_initialization.py`** — restart falls back to `MinCell.lm` if `MinCell_restart_<time>.lm` is missing.
-- **`input_data/loop_params.txt`** — protein_science format; legacy copy in `loop_params_legacy.txt`.
+## Requirements
 
-## btree_chromo (external build)
+1. Build/install **`btree_chromo`** from `btree_chromo_gpu` **`protein_science`**
+   (current tip). WCM `numSmc` handling is already upstream — do **not** need a
+   separate `btree_chromo_wcm` patch. Do **not** use the older
+   `simulator_run_loops` API (that simplified SMC number ∝ replicated DNA length
+   for the Maytin *et al.* 2026 paper).
+2. Use **`input_data/loop_params.txt`** (protein_science format).
+   `basal_death_prob` sets dwell time; `numSmc` is the total SMC count across
+   chromosomes and is **overwritten each DNA hook** by the 4DWCM Python wrapper
+   from RDME Smc counts. Legacy format:
+   `input_data/loop_params_legacy.txt` (on `main`).
 
-Use **`btree_chromo_gpu` `protein_science`** (current tip). WCM-specific SMC
-handling is already upstream: `numSmc` from `loop_params.txt` is authoritative
-(no replication-length scaling), `sync_M_to_loaded()` + `set_M(numSmc_initial)`
-after `read_state`, and `translocate:...,F` passes `tag_extruded=false`.
+Point `-dsd` at the parent directory that contains the built `btree_chromo/`.
 
-Point `-dsd` at the directory containing the built `btree_chromo/`.
+## Parameters (Maytin *et al.* 2026)
 
-## Reference trees
+Force-free segregation is controlled by three quantities. Their product divided
+by chromosome length is roughly the extruded-loop fraction and should be
+**≳ 1** for reliable segregation:
 
-[`_reference/`](_reference/) holds local snapshots of **btree_chromo_gpu** and **Minimal_Cell_ChromosomeSegregation** for comparing directives and templates. Nested `.git` dirs are ignored; re-clone upstream if needed.
+| Parameter | Default in this pipeline | Notes |
+|-----------|--------------------------|--------|
+| Translocation speed | `dna_loop_translocate_bps = 500` bp/s | Per 4 s hook: both SMC sides advance 100 beads → `translocate:100,T` in `chromosome_operations_*.inp`, then `simulator_form_loops:F` (SMC-head bonds only). |
+| Dwell time | `basal_death_prob = 0.0002` in `loop_params.txt` | Unbind probability per 1-bead loop-simulator step → mean 5000 steps ≈ **200 s**. |
+| Active SMC number | `int((P_0415 / 2) * dna_smc_bound_fraction)` | Homodimer; default `dna_smc_bound_fraction = 0.5`. With ~200 Smc proteins at *t* = 0 → ~50 active complexes; expression typically increases this over the cycle (replicate-dependent). |
 
-## Validation (2026-06)
+Other knobs set in `MC_RDME_initialization.py`: `dna_hook_interval_s` (default
+4.0; override with `DNA_HOOK_INTERVAL_SEC`), BD wall-time scale, soft-harmonic
+warmup steps. Protocol implementation: `SpatialDnaDynamics.py`.
 
-`test_protein_science2`: 900 s bio completed with zero `Create_bonds` errors, accumulating `rep_state` fork lines and growing `data.lammps` bond counts. `numSmc` tracks live `P_0415` (e.g. 50→51 when lattice count rises slowly); not btree-capped at 51.
+## Related code
 
-Simulation output belongs under `Data/` (gitignored).
+- `SpatialDnaDynamics.py` — per-hook replicate protocol
+- `MC_RDME_initialization.py` — DNA/SMC defaults
+- `input_data/loop_params.txt` — btree_chromo loop parameters

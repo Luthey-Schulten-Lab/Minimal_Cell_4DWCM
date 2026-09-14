@@ -9,7 +9,7 @@ wall-clock cost for a full $7200\,\mathrm{s}$ cell cycle.
 | Version | Branch (this repo) | Chromosome physics | Typical wall clock (7200 s bio) | Role in the paper |
 |---------|--------------------|--------------------|----------------------------------|-------------------|
 | **A — 25 h** | `main` | Lighter DNA / FENE-style coupling (no persistent SMC dwell across hooks) | **~25.3 h** | Stage I: coupling-optimized baseline |
-| **B — protein_science** | `protein_science` | Persistent SMC loops (dwell ~200 s ≫ 4 s hook); memory-faithful | **~29.4 h (~30 h)** after CPU isolation + single round-trip | Stage III: **final production** config |
+| **B — protein_science** | `1.1.0` (this repo) / legacy `protein_science` | Persistent SMC loops (dwell ~200 s ≫ 4 s hook); memory-faithful | **~26.8 h (~27 h)** after CPU isolation + single round-trip | Stage III: **final production** config |
 
 Cite **Minimal_Cell_4DWCM** for the model; cite **this repo @ the tag below** for
 the performance / architecture release used in the paper.
@@ -57,12 +57,12 @@ v25h-jcp   → Optimize_4DWCM_Minimal_Cell @ 5b61880 (or revalidated main SHA)
 
 ---
 
-## Version B — protein_science (~30 h final)
+## Version B — protein_science (~27 h final)
 
 **What it is:** Same coupling optimizations, plus **memory-faithful** DNA
 dynamics (persistent SMC loops; Maytin et al. 2026 physics). Without isolation
 this rose to ~37.6 h (mid-cycle host contention); with **CPU isolation + single
-in-place data round-trip** → **~29.4 h (~30 h)**. This is the **final** pipeline
+in-place data round-trip** → **~26.8 h (~27 h)**. This is the **final** pipeline
 in the paper.
 
 ### Pin these commits
@@ -116,7 +116,7 @@ v30h-protein-science-jcp   → Optimize_4DWCM_Minimal_Cell @ 5fa6919
 > Coupling-optimized 4DWCM sources are available at
 > Optimize_4DWCM_Minimal_Cell. The **25 h** configuration is tag `v25h-jcp`
 > (branch `main`, lighter DNA dynamics). The **protein_science** configuration
-> (persistent SMC memory; final ~30 h pipeline) is tag
+> (persistent SMC memory; final ~27 h pipeline) is tag
 > `v30h-protein-science-jcp` (branch `protein_science`). Exact dependency
 > commits are listed in `VERSIONS.md`. The underlying whole-cell model is that
 > of Thornburg et al. (Minimal_Cell_4DWCM).
@@ -131,7 +131,7 @@ git tag -a v25h-jcp -m "JCP: 25 h coupling-optimized (lighter DNA) stack"
 git push origin v25h-jcp
 
 git checkout 5fa6919   # protein_science final
-git tag -a v30h-protein-science-jcp -m "JCP: protein_science ~30 h final (CPU isolation + single round-trip)"
+git tag -a v30h-protein-science-jcp -m "JCP: protein_science ~27 h final (CPU isolation + single round-trip)"
 git push origin v30h-protein-science-jcp
 ```
 
@@ -144,7 +144,7 @@ Mirror tags / SHAs on `btree_chromo_gpu` / `btree_chromo-dev` when you have push
 | You want… | Use |
 |-----------|-----|
 | Fastest full cycle / coupling-opt paper numbers (25.3 h) | **Version A** (`main` / `v25h-jcp`) |
-| Memory-faithful SMC physics (final story, ~30 h) | **Version B** (`protein_science` / `v30h-protein-science-jcp`) |
+| Memory-faithful SMC physics (final story, ~27 h) | **Version B** (`protein_science` / `v30h-protein-science-jcp`) |
 | Original published science model (no perf paper opts) | [Minimal_Cell_4DWCM](https://github.com/Luthey-Schulten-Lab/Minimal_Cell_4DWCM) |
 
 ---
@@ -155,5 +155,5 @@ Mirror tags / SHAs on `btree_chromo_gpu` / `btree_chromo-dev` when you have push
 Baseline (~46 h)
     └─ Stage I opts ──────────────► Version A  (~25.3 h)   [main]
            └─ + protein_science DNA ► ~37.6 h (contention)
-                  └─ Stage III isolation ► Version B (~29.4 h) [protein_science]
+                  └─ Stage III isolation ► Version B (~26.8 h) [protein_science]
 ```
