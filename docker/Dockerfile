@@ -279,8 +279,18 @@ RUN set -eux; \
 COPY . /src/4d/
 WORKDIR /src/4d
 
+# odecell generates and compiles cythonCompiledFunctions.pyx in the working
+# directory at run time, so /src/4d must be writable by whatever uid runs the
+# container (schedulers commonly pass --user). Without this the Cython build
+# fails with EACCES and the run falls back to a noCython path that is broken.
+RUN chmod -R a+rwX /src/4d
+
 ENV PATH="/opt/conda/envs/lm_2.5_dev/bin:/Software/sc_chain_generation/src:/Software/btree_chromo/build/apps:${PATH}"
-ENV PYTHONPATH="/Software/Lattice_Microbes/src/pylm:/Software/Lattice_Microbes/src/jlm:${PYTHONPATH}"
+# Do NOT put src/pylm or src/jlm on PYTHONPATH. `make install` installs both as
+# proper packages (jLM as an egg carrying the compiled Lattice extension); the
+# source trees only hold Lattice.pyx, so putting them first shadows the built
+# package and breaks `from jLM import Lattice`.
+ENV PYTHONPATH="${PYTHONPATH:-}"
 ENV LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/lib64:/usr/local/lib:${LD_LIBRARY_PATH}"
 
 COPY docker/entrypoint.sh /usr/local/bin/4dwcm-entrypoint.sh
