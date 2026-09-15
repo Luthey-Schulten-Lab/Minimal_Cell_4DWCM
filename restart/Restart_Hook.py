@@ -11,15 +11,14 @@ Same host path as ``Hook.py``, with biological time offset from the checkpoint.
 """
 
 from modules.DNA_Dynamics import DNA_Dynamics
+from modules.Metabolism import Metabolism
 
 import processes.Growth as growth
 import processes.Division as division
 import processes.RibosomesRDME as ribosomesRDME
 import processes.SpatialDnaDynamics as DNA
 import processes.MC_CME as MCCME
-import processes.Rxns_ODE as ODE
 import processes.ImportInitialConditions as IC
-import utility.Integrate as integrate
 import processes.Communicate as communicate
 import utility.FileSaving as save
 
@@ -80,10 +79,9 @@ class MyOwnSolver:
         self.dna = DNA_Dynamics(sim_properties,
                                 sim_properties.get('dna_algorithm', 'BD'))
 
-        # Prefer Cython ODE solver with a build-once cache (see Integrate.setSolverCached).
-        self._ode_use_cython = True
-        self._ode_cython_failed = False
-        self._ode_solver_cache = {}
+        # Metabolism algorithm, selected by the -MB flag on the entry point.
+        self.metabolism = Metabolism(sim_properties,
+                                     sim_properties.get('metabolism_algorithm', 'ODE'))
 
         # Ribosome placement every hook; translation_update_step gates polysome updates.
         self.ribo_place_every_n_hooks = 1
@@ -320,26 +318,7 @@ class MyOwnSolver:
 
                 communicate.communicateCostsToMetabolism(self.sim_properties)
 
-                print('Initializing ODE simulation')
-                model = ODE.initModel(self.sim_properties)
-                print('Initialized ODE simulation')
-
-                initVals = integrate.getInitVals(model)
-
-                if self._ode_use_cython and not self._ode_cython_failed:
-                    try:
-                        solver = integrate.setSolverCached(model, self._ode_solver_cache)
-                    except Exception as exc:
-                        print(f"ODE: Cython solver build failed ({exc}); falling back to noCython for the remainder of the run.")
-                        self._ode_cython_failed = True
-                        self._ode_solver_cache = {}
-                        solver = integrate.noCythonSetSolver(model)
-                else:
-                    solver = integrate.noCythonSetSolver(model)
-
-                odeResults = integrate.runODE(initVals, solver, model)
-
-                communicate.updateCountsODE(self.sim_properties, odeResults, model)
+                self.metabolism.update_metabolism(time)
 
                 self.next_metabolism_time = self.next_metabolism_time + 1.0
 

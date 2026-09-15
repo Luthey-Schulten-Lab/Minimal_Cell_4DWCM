@@ -26,7 +26,7 @@ MODULES = [
     "processes.MC_CME", "processes.Communicate",
     "processes.RibosomesRDME", "processes.Growth", "processes.Division",
     "processes.SpatialDnaDynamics", "processes.MC_RDME_initialization",
-    "modules.SIM_State", "modules.DNA_Dynamics",
+    "modules.SIM_State", "modules.DNA_Dynamics", "modules.Metabolism",
     "processes.Hook",
     "restart.Restart_MC_RDME_initialization", "restart.Restart_Hook",
 ]

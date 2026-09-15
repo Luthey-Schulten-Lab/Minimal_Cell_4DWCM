@@ -31,6 +31,7 @@ ap.add_argument("-wd", "--workingDirectory", default=None)
 ap.add_argument("-mh", "--maximumHours", type=float, default=None)
 
 ap.add_argument("-DNA", "--DNADynamics", default='BD') # chromosome algorithm: BD (Brownian dynamics in LAMMPS) or lattice (Python surrogate)
+ap.add_argument("-MB", "--Metabolism", default='ODE') # metabolism algorithm: ODE (integrate the network) or skip (hold concentrations fixed)
 
 args = ap.parse_args()
 #########################################################################################
@@ -81,6 +82,7 @@ import utility.FileSaving as save
 sim, sim_properties = MCRDME.initSim(hook_step, write_step, totalTime, workingDirectoryName, headDirectory)
 
 sim_properties['dna_algorithm'] = args.DNADynamics
+sim_properties['metabolism_algorithm'] = args.Metabolism
 
 save.saveSimArgs(sim_properties, args)
 
