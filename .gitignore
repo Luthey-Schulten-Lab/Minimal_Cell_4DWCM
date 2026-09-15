@@ -17,3 +17,7 @@ __pycache__/
 
 # Container build transcripts
 docker/*.log
+
+# SLURM job outputs and per-job logs
+runs/
+slurm/logs/
