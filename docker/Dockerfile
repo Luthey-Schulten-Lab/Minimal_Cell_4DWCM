@@ -28,9 +28,19 @@ ARG LM_REPO=https://github.com/Luthey-Schulten-Lab/Lattice_Microbes.git
 # two are identical. A build with occupancy above 16 would NOT be equivalent.
 ARG LM_REF=bc58524c2d76c1b84313672b72b140f7f40b7819
 ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
-# The commit the 26.8 h production run built from. `protein_science` currently
-# points here, but it is a moving branch, so the run is pinned to the SHA.
-ARG BTREE_REF=1725d1bb0247df1090baf19e31b3124289ff8964
+# Default: the corrected boundary radius. The topo pair model sized the soft
+# bdry-DNA cutoff with the ribosome radius (117 A) instead of the boundary
+# radius (217 A), so DNA leaked through the envelope during replication.
+#
+# To reproduce the published runs instead, build with the pre-fix commit:
+#   --build-arg BTREE_REF=1725d1bb0247df1090baf19e31b3124289ff8964
+# That is what the 26.8 h production run (job 2413) built from, and every
+# figure and timing number in the paper comes from it. The two differ only in
+# the pair cutoff; replication is unaffected (both reach 108676 beads).
+#
+# `protein_science` tracks the corrected commit, but it is a moving branch, so
+# builds are pinned to the SHA either way.
+ARG BTREE_REF=7e21ce07c692a71be175c80ce89b736767b47995
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
 # Commits present in 4dcell-optimize:cuda128, the image the 26.8 h production

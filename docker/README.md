@@ -44,6 +44,7 @@ docker build -f docker/Dockerfile -t 4dwcm:ampere .
 | `KOKKOS_ARCH_FLAGS` | `-DKokkos_ARCH_AMPERE80=yes` | Kokkos GPU arch flags |
 | `HOST_ARCH` | `ZEN3` | Kokkos host CPU arch |
 | `BTREE_NVCC_ARCH` | `sm_80` | `nvcc -arch` for btree fused CG |
+| `BTREE_REF` | `7e21ce07…` | btree_chromo commit (see below) |
 | `N_PROC_MAKE` | *(nproc)* | Parallel compile jobs |
 
 Example Blackwell override:
@@ -56,6 +57,27 @@ docker build -f docker/Dockerfile -t 4dwcm:blackwell \
   --build-arg BTREE_NVCC_ARCH=sm_100 \
   .
 ```
+
+### Reproducing the published runs
+
+The default `BTREE_REF` includes a correction to the topoisomerase pair
+model: the soft boundary–DNA cutoff was sized with the ribosome radius
+(117 Å) rather than the boundary radius (217 Å), which let DNA pass
+through the cell envelope during replication.
+
+Every figure and timing number in the paper comes from the *pre-fix*
+commit. To rebuild that exact software stack:
+
+```bash
+docker build -f docker/Dockerfile -t 4dwcm:paper \
+  --build-arg BTREE_REF=1725d1bb0247df1090baf19e31b3124289ff8964 \
+  .
+```
+
+The two differ only in that pair cutoff. Replication is unaffected —
+both reach 108676 chromosome beads — but the pre-fix build leaks a small
+fraction of DNA beads outside the membrane during the replication window
+(peak ~0.8% around frame 650), which is visible when rendering.
 
 ## Run
 
@@ -117,4 +139,4 @@ Default `-dsd /Software/` matches the baked layout (`btree_chromo/` and `sc_chai
 - First build is long (GCC, OpenMPI, LAMMPS, LM, btree). Prefer Ampere unless you need another arch.
 - FreeDTS is not baked in (optional morphology path).
 - LM is **unmodified** public [Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) with large species matrices enabled.
-- Chromosome engine: [btree_chromo_gpu `protein_science`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu/tree/protein_science).
+- Chromosome engine: [btree_chromo_gpu `protein_science`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu/tree/protein_science), pinned to a SHA rather than the branch, since the branch moves.
