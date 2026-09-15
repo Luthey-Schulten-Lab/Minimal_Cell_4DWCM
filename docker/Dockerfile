@@ -222,7 +222,8 @@ RUN git clone --depth 1 --branch "${LM_REF}" "${LM_REPO}" ${LM_dir}
 
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
-    source /opt/conda/etc/profile.d/conda.sh && conda activate lm_2.5_dev && \
+    source /opt/conda/etc/profile.d/conda.sh && \
+    set +u && conda activate lm_2.5_dev && set -u && \
     export CUDA_HOME=/usr/local/cuda && \
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH} && \
     cd ${LM_dir} && rm -rf build && mkdir -p build && cd build && \
