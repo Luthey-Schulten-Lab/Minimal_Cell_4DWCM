@@ -21,3 +21,6 @@ docker/*.log
 # SLURM job outputs and per-job logs
 runs/
 slurm/logs/
+
+# jLM pyximport build output (created when the model is imported)
+pyxbld/

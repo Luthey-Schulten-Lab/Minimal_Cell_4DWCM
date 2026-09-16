@@ -10,11 +10,13 @@
 # passed to Docker, which renumbers them to 0 and 1 inside the container. So the
 # indices above are always 0/1 regardless of which physical cards we were given.
 #
+# No --partition is set, so the job lands on the cluster default. Override with
+# `submit.sh -p NAME` or `sbatch -p NAME`.
+#
 # Submit via slurm/submit.sh (handles arg checking), or directly:
 #   OUTDIR=run001 SIM_TIME=6300 sbatch slurm/4dwcm.sbatch
 ###############################################################################
 #SBATCH --job-name=4dwcm
-#SBATCH --partition=batch
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:2
@@ -52,6 +54,65 @@ if [[ "${NGPU}" -lt 2 ]]; then
   echo "       Submit with --gres=gpu:2." >&2
   exit 1
 fi
+
+# ----------------------------------------------------------- CPU allocation
+# `docker run` talks to the daemon, so the container is NOT placed in this job's
+# cgroup and --cpus-per-task alone does not confine it. Pass the job's cpuset to
+# Docker explicitly, otherwise concurrent runs land on the same physical cores.
+#
+# Within that set the RDME host thread and the btree_chromo BD process run at
+# the same time and contend, so split it: LM takes the first half (applied below
+# via taskset), btree_chromo the second (SpatialDnaDynamics reads DNA_CPU_CORES).
+# Set either variable by hand to override. If the cpuset cannot be read, or is
+# too small to divide, nothing is pinned.
+#
+# Split by *physical* core, not by logical cpu id. SLURM hands out hyperthread
+# siblings together, so a sorted allocation looks like "8-15,120-127" where the
+# second range is the sibling set of the first. Halving that list would put LM
+# and btree_chromo on the same physical cores and defeat the isolation.
+CPUSET=""
+if command -v taskset >/dev/null 2>&1; then
+  CPUSET="$(taskset -cp $$ 2>/dev/null | sed 's/.*:[[:space:]]*//')"
+fi
+if [[ -n "${CPUSET}" && ( -z "${LM_CPU_CORES:-}" || -z "${DNA_CPU_CORES:-}" ) ]]; then
+  # "8-15,120-127" -> one cpu id per line
+  mapfile -t CPUS < <(awk -F, '{
+    for (i = 1; i <= NF; i++) {
+      if (split($i, r, "-") == 2) { for (c = r[1]; c <= r[2]; c++) print c }
+      else print $i
+    }
+  }' <<<"${CPUSET}")
+
+  # One line per physical core: its siblings that are inside our cpuset.
+  declare -A IN_SET=() && for c in "${CPUS[@]}"; do IN_SET["${c}"]=1; done
+  CORES=() && declare -A SEEN=()
+  for c in "${CPUS[@]}"; do
+    [[ -n "${SEEN[${c}]:-}" ]] && continue
+    SIB_FILE="/sys/devices/system/cpu/cpu${c}/topology/thread_siblings_list"
+    SIBS=("${c}")
+    if [[ -r "${SIB_FILE}" ]]; then
+      mapfile -t ALL_SIBS < <(awk -F, '{
+        for (i = 1; i <= NF; i++) {
+          if (split($i, r, "-") == 2) { for (j = r[1]; j <= r[2]; j++) print j }
+          else print $i
+        }
+      }' "${SIB_FILE}")
+      SIBS=()
+      for s in "${ALL_SIBS[@]}"; do [[ -n "${IN_SET[${s}]:-}" ]] && SIBS+=("${s}"); done
+    fi
+    for s in "${SIBS[@]}"; do SEEN["${s}"]=1; done
+    CORES+=("$(IFS=,; echo "${SIBS[*]}")")
+  done
+
+  if (( ${#CORES[@]} >= 2 )); then
+    HALF=$(( ${#CORES[@]} / 2 ))
+    LM_CPU_CORES="${LM_CPU_CORES:-$(IFS=,; echo "${CORES[*]:0:HALF}")}"
+    DNA_CPU_CORES="${DNA_CPU_CORES:-$(IFS=,; echo "${CORES[*]:HALF}")}"
+  fi
+fi
+
+CPUSET_ARG=()
+[[ -n "${CPUSET}" ]] && CPUSET_ARG=(--cpuset-cpus "${CPUSET}")
 
 # ------------------------------------------------- wall-clock safety cut-off
 # The sim stops cleanly at -mh so it can checkpoint before SLURM kills it.
@@ -95,6 +156,16 @@ trap cleanup EXIT TERM INT
 MOUNTS=(-v "${DATA_ROOT}:/src/4d/Data")
 [[ "${MOUNT_REPO}" == "1" ]] && MOUNTS+=(-v "${REPO}:/src/4d")
 
+CMD=(python "${SCRIPT}"
+     -od "${OUTDIR}"
+     -t "${SIM_TIME}"
+     -cd 0
+     -drs "${SEED}"
+     -m "${MEMBRANE}"
+     -dsd /Software/
+     "${MH_ARG[@]}")
+[[ -n "${LM_CPU_CORES:-}" ]] && CMD=(taskset -c "${LM_CPU_CORES}" "${CMD[@]}")
+
 echo "=== 4DWCM run ==============================================="
 echo "  job          ${SLURM_JOB_ID:-<no slurm>} on $(hostname)"
 echo "  image        ${IMAGE}"
@@ -103,6 +174,8 @@ echo "  output       ${DATA_ROOT}/${OUTDIR}/"
 echo "  sim time     ${SIM_TIME} s"
 echo "  seed         ${SEED}"
 echo "  host GPUs    ${GPUS}  -> container 0 (RDME) + 1 (DNA)"
+echo "  host CPUs    ${CPUSET:-<unconfined>}"
+echo "  cpu split    LM=${LM_CPU_CORES:-<unpinned>}  btree=${DNA_CPU_CORES:-<unpinned>}"
 echo "  wall cutoff  ${MH_ARG[*]:-none}"
 echo "  repo mount   $([[ "${MOUNT_REPO}" == "1" ]] && echo "working tree" || echo "baked into image")"
 echo "============================================================="
@@ -114,19 +187,14 @@ docker run --rm \
   --shm-size=8g \
   -e HOME=/tmp \
   -e DNA_GPU_ID=1 \
+  -e DNA_CPU_CORES="${DNA_CPU_CORES:-}" \
   -e USER="$(id -un)" \
   -e LOGNAME="$(id -un)" \
   -v /etc/passwd:/etc/passwd:ro \
   -v /etc/group:/etc/group:ro \
+  "${CPUSET_ARG[@]}" \
   "${MOUNTS[@]}" \
   "${IMAGE}" \
-  python "${SCRIPT}" \
-    -od "${OUTDIR}" \
-    -t "${SIM_TIME}" \
-    -cd 0 \
-    -drs "${SEED}" \
-    -m "${MEMBRANE}" \
-    -dsd /Software/ \
-    "${MH_ARG[@]}"
+  "${CMD[@]}"
 
 echo "=== finished: ${DATA_ROOT}/${OUTDIR}/ ==="

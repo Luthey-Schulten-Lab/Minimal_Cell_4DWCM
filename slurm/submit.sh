@@ -13,8 +13,8 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 OUTDIR=""; SIM_TIME=""; SEED=1; MEMBRANE=1
-IMAGE="4dwcm:ampere"; WALLTIME=""; DATA_ROOT="${REPO}/runs"
-RESTART=0; MOUNT_REPO=0; DRYRUN=0
+IMAGE="${IMAGE:-4dwcm:ampere}"; WALLTIME=""; DATA_ROOT="${REPO}/runs"
+PARTITION="${PARTITION:-}"; RESTART=0; MOUNT_REPO=0; DRYRUN=0
 
 usage() {
   cat <<'EOF'
@@ -27,7 +27,9 @@ Required:
 Options:
   -s, --seed N          DNA RNG seed modifier      (default 1)
   -m, --membrane N      membrane flag              (default 1)
-  -i, --image TAG       docker image               (default 4dwcm:ampere)
+  -i, --image TAG       docker image, or $IMAGE    (default 4dwcm:ampere)
+                        build_blackwell.sh tags 4dwcm:blackwell
+  -p, --partition NAME  SLURM partition, or $PARTITION (default: cluster's)
       --data-root DIR   output root                (default <repo>/runs)
       --time HH:MM:SS   SLURM wall limit; the sim stops ~20 min early to
                         checkpoint cleanly. Omit for no limit.
@@ -46,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     -s|--seed)       SEED="$2"; shift 2 ;;
     -m|--membrane)   MEMBRANE="$2"; shift 2 ;;
     -i|--image)      IMAGE="$2"; shift 2 ;;
+    -p|--partition)  PARTITION="$2"; shift 2 ;;
     --data-root)     DATA_ROOT="$2"; shift 2 ;;
     --time)          WALLTIME="$2"; shift 2 ;;
     --restart)       RESTART=1; shift ;;
@@ -61,7 +64,9 @@ done
 
 # Fail early rather than after the job sits in the queue.
 if ! docker image inspect "${IMAGE}" >/dev/null 2>&1; then
-  echo "ERROR: docker image '${IMAGE}' not found. Build it with ./docker/build_ampere.sh" >&2
+  echo "ERROR: docker image '${IMAGE}' not found." >&2
+  echo "       Build one for your GPU: ./docker/build_ampere.sh (A100, sm_80)," >&2
+  echo "       ./docker/build_blackwell.sh (B200, sm_100), or ./docker/build_multi.sh." >&2
   exit 1
 fi
 
@@ -74,6 +79,7 @@ fi
 mkdir -p "${REPO}/slurm/logs" "${DATA_ROOT}"
 
 SB=(sbatch --job-name "4dwcm-${OUTDIR}")
+[[ -n "${PARTITION}" ]] && SB+=(--partition "${PARTITION}")
 [[ -n "${WALLTIME}" ]] && SB+=(--time "${WALLTIME}")
 SB+=(
   --export="ALL,REPO=${REPO},IMAGE=${IMAGE},OUTDIR=${OUTDIR},SIM_TIME=${SIM_TIME},SEED=${SEED},MEMBRANE=${MEMBRANE},DATA_ROOT=${DATA_ROOT},RESTART=${RESTART},MOUNT_REPO=${MOUNT_REPO}"
