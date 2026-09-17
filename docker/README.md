@@ -115,6 +115,5 @@ Default `-dsd /Software/` matches the baked layout (`btree_chromo/` and `sc_chai
 ## Notes
 
 - First build is long (GCC, OpenMPI, LAMMPS, LM, btree). Prefer Ampere unless you need another arch.
-- FreeDTS is not baked in (optional morphology path).
-- LM is **unmodified** public [Lattice_Microbes](https://github.com/Luthey-Schulten-Lab/Lattice_Microbes) with large species matrices enabled.
+- 
 - Chromosome engine: [btree_chromo_gpu `protein_science`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu/tree/protein_science).
