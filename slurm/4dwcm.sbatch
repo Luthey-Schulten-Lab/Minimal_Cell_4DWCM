@@ -55,6 +55,47 @@ if [[ "${NGPU}" -lt 2 ]]; then
   exit 1
 fi
 
+# Confirm the cards are actually free, and healthy. SLURM's accounting only
+# tracks how many GPUs a job holds, not which, so anything started outside
+# SLURM -- or by a script that picks its own devices -- is invisible to the
+# scheduler and can be handed to us while still running.
+#
+# The temperature check is not paranoia: a card with a cooling fault sustains
+# SW Thermal Slowdown and runs at a fraction of its rated SM clock, which shows
+# up as a 3x slower RDME solver and a 10 h longer cell cycle while every other
+# per-process cost is unchanged. It is silent otherwise -- the run completes and
+# the biology is correct -- so it is only visible in the timing.
+GPU_TEMP_MAX="${GPU_TEMP_MAX:-85}"
+if [[ "${SKIP_GPU_CHECK:-0}" != "1" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  for g in ${GPUS//,/ }; do
+    used=$(nvidia-smi -i "${g}" --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null || echo "")
+    if [[ "${used}" =~ ^[0-9]+$ ]] && [[ "${used}" -gt 500 ]]; then
+      echo "ERROR: SLURM allocated GPU ${g} but it is busy (${used} MiB in use)." >&2
+      nvidia-smi -i "${g}" --query-compute-apps=pid,process_name,used_memory --format=csv >&2
+      echo "       Set SKIP_GPU_CHECK=1 to override." >&2
+      exit 1
+    fi
+
+    temp=$(nvidia-smi -i "${g}" --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo "")
+    if [[ "${temp}" =~ ^[0-9]+$ ]] && [[ "${temp}" -ge "${GPU_TEMP_MAX}" ]]; then
+      echo "ERROR: GPU ${g} is at ${temp} C (limit ${GPU_TEMP_MAX}); it will thermally throttle." >&2
+      echo "       Set GPU_TEMP_MAX higher or SKIP_GPU_CHECK=1 to override." >&2
+      exit 1
+    fi
+
+    # Field is clocks_event_reasons.* on newer drivers; the old name is accepted
+    # as an alias. Empty output means the driver does not report it, so skip.
+    slow=$(nvidia-smi -i "${g}" \
+             --query-gpu=clocks_throttle_reasons.sw_thermal_slowdown,clocks_throttle_reasons.hw_thermal_slowdown \
+             --format=csv,noheader 2>/dev/null || echo "")
+    if [[ "${slow}" == *Active* && "${slow}" != *"Not Active, Not Active"* ]]; then
+      echo "ERROR: GPU ${g} reports thermal slowdown active (${slow}) at ${temp:-?} C." >&2
+      echo "       Set SKIP_GPU_CHECK=1 to override." >&2
+      exit 1
+    fi
+  done
+fi
+
 # ----------------------------------------------------------- CPU allocation
 # `docker run` talks to the daemon, so the container is NOT placed in this job's
 # cgroup and --cpus-per-task alone does not confine it. Pass the job's cpuset to
@@ -141,7 +182,9 @@ SCRIPT="Whole_Cell_Minimal_Cell.py"
 [[ "${RESTART}" == "1" ]] && SCRIPT="Restart_Whole_Cell_Minimal_Cell.py"
 
 CIDFILE="$(mktemp -u "${TMPDIR:-/tmp}/4dwcm-cid-XXXXXX")"
+MONPID=""
 cleanup() {
+  [[ -n "${MONPID}" ]] && kill "${MONPID}" 2>/dev/null
   if [[ -f "${CIDFILE}" ]]; then
     docker rm -f "$(cat "${CIDFILE}")" >/dev/null 2>&1 || true
     rm -f "${CIDFILE}"
@@ -149,6 +192,22 @@ cleanup() {
 }
 # Without this, scancel kills the job step but leaves the container running.
 trap cleanup EXIT TERM INT
+
+# The pre-flight check only sees the cards as they are at submission. A cooling
+# fault that develops under load would otherwise be invisible, so sample the
+# clock and temperature into the job log; a run that came out slow can then be
+# checked against its own record instead of guessed at.
+GPU_MONITOR_INTERVAL="${GPU_MONITOR_INTERVAL:-300}"
+if [[ "${GPU_MONITOR_INTERVAL}" -gt 0 ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  (
+    while sleep "${GPU_MONITOR_INTERVAL}"; do
+      echo "[gpu $(date +%H:%M:%S)] $(nvidia-smi -i "${GPUS}" \
+        --query-gpu=index,clocks.sm,clocks.max.sm,temperature.gpu,utilization.gpu \
+        --format=csv,noheader,nounits 2>/dev/null | tr '\n' ' | ')"
+    done
+  ) &
+  MONPID=$!
+fi
 
 # The code resolves every input as <workdir>/input_data/... and writes output to
 # <workdir>/Data/<outdir>/. The image already holds code and input_data at
