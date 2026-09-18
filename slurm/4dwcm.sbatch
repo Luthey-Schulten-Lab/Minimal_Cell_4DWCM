@@ -47,7 +47,12 @@ mkdir -p "${DATA_ROOT}" "${REPO}/slurm/logs"
 
 # ------------------------------------------------------------- GPU selection
 # SLURM exports the allocated device indices; fall back to 0,1 outside SLURM.
-GPUS="${CUDA_VISIBLE_DEVICES:-0,1}"
+#
+# GPUS can be set explicitly to override both. The scheduler only knows about
+# work it started, so on a box where cards are also driven directly it will
+# hand out devices that are already busy. The health check below catches that
+# and refuses to start; this is how you then point the job at free cards.
+GPUS="${GPUS:-${CUDA_VISIBLE_DEVICES:-0,1}}"
 NGPU=$(awk -F, '{print NF}' <<<"${GPUS}")
 if [[ "${NGPU}" -lt 2 ]]; then
   echo "ERROR: need 2 GPUs, SLURM gave ${NGPU} (CUDA_VISIBLE_DEVICES=${GPUS})." >&2
