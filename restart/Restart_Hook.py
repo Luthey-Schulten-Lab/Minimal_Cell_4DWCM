@@ -333,7 +333,10 @@ class MyOwnSolver:
                 filestart = TIME.time()
 
                 # Skip extra updateCountsRDME; counts were refreshed earlier in this hook.
-                save.saveCountsAndFluxes(time, self.sim_properties, odeResults, model, solver)
+                save.saveCountsAndFluxes(time, self.sim_properties,
+                                         self.metabolism.last_results,
+                                         self.metabolism.last_model,
+                                         self.metabolism.last_solver)
 
                 communicate.resetCostCounters(self.sim_properties)
 

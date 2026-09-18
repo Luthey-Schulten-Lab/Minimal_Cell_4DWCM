@@ -36,6 +36,13 @@ class Metabolism:
         self._cython_failed = False
         self._solver_cache = {}
 
+        # The counts/flux writer runs on its own cadence, not the metabolism
+        # hook's, so it reports whichever integration ran most recently rather
+        # than one of its own. Retain that here for it to read back.
+        self.last_results = None
+        self.last_model = None
+        self.last_solver = None
+
         if metabolism_algorithm == 'ODE':
             self.run = self._run_ODE
             print("Metabolism: ordinary differential equations")
@@ -54,6 +61,8 @@ class Metabolism:
         model : odecell model
             The model the trajectory was produced with, needed to map results
             back onto species counts.
+        solver : odecell solver
+            Needed by the counts/flux writer to recover per-reaction fluxes.
         """
 
         print('Initializing ODE simulation')
@@ -76,7 +85,7 @@ class Metabolism:
         else:
             solver = integrate.noCythonSetSolver(model)
 
-        return integrate.runODE(initVals, solver, model), model
+        return integrate.runODE(initVals, solver, model), model, solver
 
     def _skip_ODE(self, time):
         """
@@ -99,8 +108,12 @@ class Metabolism:
     def update_metabolism(self, time) -> None:
         """Advance metabolism and write the new counts into ``sim_properties``."""
 
-        odeResults, model = self.run(time)
+        odeResults, model, solver = self.run(time)
 
         communicate.updateCountsODE(self.sim_properties, odeResults, model)
+
+        self.last_results = odeResults
+        self.last_model = model
+        self.last_solver = solver
 
         return None
