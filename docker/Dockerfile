@@ -23,7 +23,10 @@ ARG BTREE_NVCC_ARCH=sm_80
 ARG LM_REPO=https://github.com/Luthey-Schulten-Lab/Lattice_Microbes.git
 ARG LM_REF=master
 ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
-ARG BTREE_REF=protein_science
+# Our work lives on `btree_chromo_v2.0.0`; `protein_science` is Andrew Maytin's
+# published branch and does not carry the boundary radius or output publication
+# corrections. Pin the SHA rather than either branch name, since both move.
+ARG BTREE_REF=d5dcada7a4ff758b2559507a152c44976fc27fd5
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
 ARG LAMMPS_GIT_URL=https://github.com/lammps/lammps.git
