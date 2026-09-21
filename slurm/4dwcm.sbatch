@@ -37,6 +37,13 @@ DATA_ROOT="${DATA_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}/runs}"
 MOUNT_REPO="${MOUNT_REPO:-0}"     # 1 = use the working tree instead of baked-in code
 RESTART="${RESTART:-0}"           # 1 = resume an existing run via the Restart script
 
+# Path to a btree_chromo checkout to run instead of the one baked into the
+# image, for trying a build without republishing the image. BTREE_BUILD_DIR
+# picks the build subdirectory within it, since the Makefile's BUILD var is
+# overridden per-config (build_fused, build_asan).
+BTREE_REPO="${BTREE_REPO:-}"
+BTREE_BUILD_DIR="${BTREE_BUILD_DIR:-build}"
+
 # SLURM copies this script into its spool dir, so BASH_SOURCE does NOT point at
 # the repo. Prefer REPO exported by submit.sh, then the submit directory, and
 # only fall back to BASH_SOURCE when run outside SLURM.
@@ -220,6 +227,17 @@ fi
 MOUNTS=(-v "${DATA_ROOT}:/src/4d/Data")
 [[ "${MOUNT_REPO}" == "1" ]] && MOUNTS+=(-v "${REPO}:/src/4d")
 
+# The checkout carries LAMMPS_DNA_model_kk as well as the build, and the
+# directives reference that path, so bind the whole tree rather than the binary.
+if [[ -n "${BTREE_REPO}" ]]; then
+  BTREE_BIN="${BTREE_REPO}/${BTREE_BUILD_DIR}/apps/btree_chromo"
+  if [[ ! -x "${BTREE_BIN}" ]]; then
+    echo "ERROR: BTREE_REPO set but ${BTREE_BIN} is missing or not executable." >&2
+    exit 1
+  fi
+  MOUNTS+=(-v "${BTREE_REPO}:/Software/btree_chromo:ro")
+fi
+
 CMD=(python "${SCRIPT}"
      -od "${OUTDIR}"
      -t "${SIM_TIME}"
@@ -242,6 +260,7 @@ echo "  host CPUs    ${CPUSET:-<unconfined>}"
 echo "  cpu split    LM=${LM_CPU_CORES:-<unpinned>}  btree=${DNA_CPU_CORES:-<unpinned>}"
 echo "  wall cutoff  ${MH_ARG[*]:-none}"
 echo "  repo mount   $([[ "${MOUNT_REPO}" == "1" ]] && echo "working tree" || echo "baked into image")"
+echo "  btree        $([[ -n "${BTREE_REPO}" ]] && echo "${BTREE_REPO} (${BTREE_BUILD_DIR})" || echo "baked into image")"
 echo "============================================================="
 
 docker run --rm \
@@ -252,6 +271,7 @@ docker run --rm \
   -e HOME=/tmp \
   -e DNA_GPU_ID=1 \
   -e DNA_CPU_CORES="${DNA_CPU_CORES:-}" \
+  -e BTREE_BUILD_DIR="${BTREE_BUILD_DIR}" \
   -e USER="$(id -un)" \
   -e LOGNAME="$(id -un)" \
   -v /etc/passwd:/etc/passwd:ro \

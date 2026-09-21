@@ -44,7 +44,7 @@ docker build -f docker/Dockerfile -t 4dwcm:ampere .
 | `KOKKOS_ARCH_FLAGS` | `-DKokkos_ARCH_AMPERE80=yes` | Kokkos GPU arch flags |
 | `HOST_ARCH` | `ZEN3` | Kokkos host CPU arch |
 | `BTREE_NVCC_ARCH` | `sm_80` | `nvcc -arch` for btree fused CG |
-| `BTREE_REF` | `7e21ce07…` | btree_chromo commit (see below) |
+| `BTREE_REF` | `d5dcada7…` | btree_chromo commit (see below) |
 | `N_PROC_MAKE` | *(nproc)* | Parallel compile jobs |
 
 Example Blackwell override:
@@ -60,10 +60,18 @@ docker build -f docker/Dockerfile -t 4dwcm:blackwell \
 
 ### Reproducing the published runs
 
-The default `BTREE_REF` includes a correction to the topoisomerase pair
-model: the soft boundary–DNA cutoff was sized with the ribosome radius
-(117 Å) rather than the boundary radius (217 Å), which let DNA pass
-through the cell envelope during replication.
+The default `BTREE_REF` carries two corrections.
+
+The first is to the topoisomerase pair model: the soft boundary–DNA
+cutoff was sized with the ribosome radius (117 Å) rather than the
+boundary radius (217 Å), which let DNA pass through the cell envelope
+during replication.
+
+The second is to how btree publishes its output. `write_bin` and
+`dump_topology` wrote straight to the final path, so the Python driver
+polling for those files could open one mid-write and read only part of
+the chromosome — rare, but it killed a production run. They now write to
+a temporary name and rename it into place, which is atomic.
 
 Every figure and timing number in the paper comes from the *pre-fix*
 commit. To rebuild that exact software stack:
@@ -74,9 +82,10 @@ docker build -f docker/Dockerfile -t 4dwcm:paper \
   .
 ```
 
-The two differ only in that pair cutoff. Replication is unaffected —
-both reach 108676 chromosome beads — but the pre-fix build leaks a small
-fraction of DNA beads outside the membrane during the replication window
+They differ in that pair cutoff and in output publication. Replication is
+unaffected — both reach 108676 chromosome beads — but the pre-fix build
+leaks a small fraction of DNA beads outside the membrane during the
+replication window
 (peak ~0.8% around frame 650), which is visible when rendering.
 
 ## Run
