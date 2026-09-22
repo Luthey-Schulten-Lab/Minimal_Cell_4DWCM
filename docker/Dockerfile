@@ -46,8 +46,9 @@ ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
 # pair cutoff and the file publication; replication is unaffected (all reach
 # 108676 beads).
 #
-# `protein_science` tracks the corrected commits, but it is a moving branch, so
-# builds are pinned to the SHA either way.
+# `btree_chromo_v2.0.0` tracks the corrected commits, but it is a moving branch,
+# so builds are pinned to the SHA either way. `protein_science` is Andrew
+# Maytin's published branch and carries none of these corrections.
 ARG BTREE_REF=d5dcada7a4ff758b2559507a152c44976fc27fd5
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
@@ -253,7 +254,7 @@ RUN set -eux; \
     cd build_${LAMMPS_tag} && make -j "${NPROC}" && make install && \
     rm -rf build_${LAMMPS_tag}
 
-# ---------- btree_chromo (protein_science) ----------
+# ---------- btree_chromo (btree_chromo_v2.0.0) ----------
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
     cd /Software/btree_chromo && \

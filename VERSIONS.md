@@ -70,12 +70,12 @@ in the paper.
 | Component | Repo | Branch / ref | Commit (validated) |
 |-----------|------|--------------|--------------------|
 | 4DWCM Python | [Optimize_4DWCM_Minimal_Cell](https://github.com/luthey-schulten-chemistry/Optimize_4DWCM_Minimal_Cell) | `protein_science` | `5fa6919` (CPU isolation + single round-trip) |
-| Chromosome BD | [btree_chromo_gpu](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu) | `protein_science` | `ce1d839` *(includes in-place LAMMPS update + fused CG; push if still ahead of origin)* |
+| Chromosome BD | [btree_chromo_gpu](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu) | `btree_chromo_v2.0.0` | `ce1d839` *(includes in-place LAMMPS update + fused CG)* |
 | RDME / CME | [Lattice_Microbes_2.6](https://github.com/luthey-schulten-chemistry/Lattice_Microbes_2.6) | `master` | `75c0205` |
 | Container | local Docker | `4dcell-optimize:cuda128` | image tag on the machine |
 
 Chromosome BD already includes WCM SMC-count behavior on current
-`protein_science` (no separate patch step).
+`btree_chromo_v2.0.0` (no separate patch step).
 
 ### Checkout
 
@@ -84,8 +84,8 @@ git clone git@github.com:luthey-schulten-chemistry/Optimize_4DWCM_Minimal_Cell.g
 cd Optimize_4DWCM_Minimal_Cell
 git checkout protein_science   # or: git checkout 5fa6919
 
-# btree (protein_science engine)
-git clone -b protein_science \
+# btree (persistent SMC engine)
+git clone -b btree_chromo_v2.0.0 \
   https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git btree_chromo_gpu
 cd btree_chromo_gpu && git checkout ce1d839 && cd ..
 ```
