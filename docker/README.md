@@ -1,7 +1,7 @@
 # Docker — Minimal Cell 4DWCM
 
 Public CUDA image with Lattice Microbes, odecell, sc_chain_generation,
-Kokkos/LAMMPS, and `btree_chromo` (`protein_science`), plus this repository.
+Kokkos/LAMMPS, and `btree_chromo` (`btree_chromo_v2.0.0`), plus this repository.
 
 **Requirements to build:** Docker, ~50+ GB free disk, multi-hour compile (no GPU needed to *build*).  
 **Requirements to run:** [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) + NVIDIA GPU.
@@ -107,7 +107,7 @@ docker run --rm -it --gpus all -v "$PWD/Data:/src/4d/Data" 4dwcm:ampere bash
 | `/Software/Lattice_Microbes/` | Public LM (global T/R matrices) |
 | `/Software/odecell/` | Metabolic ODE stack |
 | `/Software/sc_chain_generation/` | Init chromosome generator |
-| `/Software/btree_chromo/` | `protein_science` BD engine |
+| `/Software/btree_chromo/` | `btree_chromo_v2.0.0` BD engine |
 | `/Software/LAMMPS/` | Kokkos/CUDA LAMMPS build |
 
 Default `-dsd /Software/` matches the baked layout (`btree_chromo/` and `sc_chain_generation/` as siblings).
@@ -116,4 +116,4 @@ Default `-dsd /Software/` matches the baked layout (`btree_chromo/` and `sc_chai
 
 - First build is long (GCC, OpenMPI, LAMMPS, LM, btree). Prefer Ampere unless you need another arch.
 - 
-- Chromosome engine: [btree_chromo_gpu `protein_science`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu/tree/protein_science).
+- Chromosome engine: [btree_chromo_gpu `btree_chromo_v2.0.0`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu/tree/btree_chromo_v2.0.0). `protein_science` is Andrew Maytin's published branch and does not carry our corrections.

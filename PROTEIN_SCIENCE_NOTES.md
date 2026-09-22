@@ -3,9 +3,11 @@
 Partitioning is driven by **SMC loop extrusion alone** (no fictitious external
 force). This branch couples the 4DWCM to
 [`btree_chromo_gpu`](https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu)
-branch **`protein_science`**, which persists SMC loop state across DNA hooks via
-`load_loops` / `write_loops` and `translocate`. That lets the model use SMC
-dwell times much longer than a single DNA hook interval (~4 s).
+branch **`btree_chromo_v2.0.0`**, which persists SMC loop state across DNA hooks
+via `load_loops` / `write_loops` and `translocate`. That lets the model use SMC
+dwell times much longer than a single DNA hook interval (~4 s). The loop
+persistence originates in Maytin *et al.*'s `protein_science` branch;
+`btree_chromo_v2.0.0` carries it plus our boundary and output-publication fixes.
 
 Standalone examples of the same chromosome physics appear in
 [Minimal_Cell_ChromosomeSegregation](https://github.com/Luthey-Schulten-Lab/Minimal_Cell_ChromosomeSegregation)
@@ -14,7 +16,7 @@ parameter table are also in the JCP manuscript **SI**.
 
 ## Requirements
 
-1. Build/install **`btree_chromo`** from `btree_chromo_gpu` **`protein_science`**
+1. Build/install **`btree_chromo`** from `btree_chromo_gpu` **`btree_chromo_v2.0.0`**
    (current tip). WCM `numSmc` handling is already upstream — do **not** need a
    separate `btree_chromo_wcm` patch. Do **not** use the older
    `simulator_run_loops` API (that simplified SMC number ∝ replicated DNA length

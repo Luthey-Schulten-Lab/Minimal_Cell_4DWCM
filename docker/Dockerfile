@@ -210,7 +210,7 @@ RUN set -eux; \
     cd build_${LAMMPS_tag} && make -j "${NPROC}" && make install && \
     rm -rf build_${LAMMPS_tag}
 
-# ---------- btree_chromo (protein_science) ----------
+# ---------- btree_chromo (btree_chromo_v2.0.0) ----------
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
     cd /Software/btree_chromo && \

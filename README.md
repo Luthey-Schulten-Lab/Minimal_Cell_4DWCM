@@ -30,7 +30,7 @@ and the manuscript SI):
 | Dwell | `basal_death_prob=0.0002` (~200 s) | How long an SMC stays bound |
 | Active SMC | `int((P_0415/2)*0.5)` (~50 at *t*=0) | Bound dimers from RDME Smc count |
 
-Build `btree_chromo` from `btree_chromo_gpu` **`protein_science`** and use
+Build `btree_chromo` from `btree_chromo_gpu` **`btree_chromo_v2.0.0`** and use
 `input_data/loop_params.txt` (not the legacy / `simulator_run_loops` path).
 
 ## Dependencies
@@ -41,11 +41,11 @@ Install these before running (same conda env for LM + odecell):
 |---------|------------|
 | Lattice Microbes | https://github.com/Luthey-Schulten-Lab/Lattice_Microbes |
 | odecell | https://github.com/Luthey-Schulten-Lab/odecell |
-| btree_chromo (Kokkos LAMMPS) | https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu (`protein_science` branch) |
+| btree_chromo (Kokkos LAMMPS) | https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu (`btree_chromo_v2.0.0` branch) |
 | sc_chain_generation | https://github.com/Luthey-Schulten-Lab/sc_chain_generation |
 | FreeDTS (optional) | https://github.com/weria-pezeshkian/FreeDTS |
 
-Use current `protein_science` btree_chromo (SMC count from `loop_params` / WCM
+Use current `btree_chromo_v2.0.0` btree_chromo (SMC count from `loop_params` / WCM
 proteome is already upstream). See [`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md)
 for coupling details and [`VERSIONS.md`](VERSIONS.md) for pinned commits.
 
@@ -54,7 +54,7 @@ for coupling details and [`VERSIONS.md`](VERSIONS.md) for pinned commits.
 ## Docker (recommended for new users)
 
 A public CUDA image builds LM + odecell + sc_chain + Kokkos/LAMMPS +
-`btree_chromo` (`protein_science`) + this code. See **[`docker/README.md`](docker/README.md)**.
+`btree_chromo` (`btree_chromo_v2.0.0`) + this code. See **[`docker/README.md`](docker/README.md)**.
 
 ```bash
 # From repo root — Ampere (A100 / many cloud GPUs), default
