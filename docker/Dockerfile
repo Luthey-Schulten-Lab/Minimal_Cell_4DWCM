@@ -21,7 +21,12 @@ ARG KOKKOS_ARCH_FLAGS="-DKokkos_ARCH_AMPERE80=yes"
 ARG HOST_ARCH=ZEN3
 ARG BTREE_NVCC_ARCH=sm_80
 ARG LM_REPO=https://github.com/Luthey-Schulten-Lab/Lattice_Microbes.git
-ARG LM_REF=master
+# Public Lattice Microbes, pinned. The production runs built LM from a private
+# 2.6 tree; against that tree's committed state this differs almost entirely by
+# formatting, plus one real divergence: MPD_WORDS_PER_SITE is clamped to 16
+# there and is MPD_LATTICE_MAX_OCCUPANCY here. Our builds set that to 16, so the
+# two are identical. A build with occupancy above 16 would NOT be equivalent.
+ARG LM_REF=bc58524c2d76c1b84313672b72b140f7f40b7819
 ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
 # Our work lives on `btree_chromo_v2.0.0`; `protein_science` is Andrew Maytin's
 # published branch and does not carry the boundary radius or output publication
@@ -29,8 +34,18 @@ ARG BTREE_REPO=https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu.git
 ARG BTREE_REF=d5dcada7a4ff758b2559507a152c44976fc27fd5
 ARG ODECELL_REPO=https://github.com/Luthey-Schulten-Lab/odecell.git
 ARG SC_CHAIN_REPO=https://github.com/Luthey-Schulten-Lab/sc_chain_generation.git
+# Commits present in 4dcell-optimize:cuda128, the image the 26.8 h production
+# run (job 2413) used. That job rebuilds only LM and btree_chromo, so these two
+# are exactly what it ran against.
+ARG ODECELL_REF=b19413f2f8c1a88d1fe619e09ad9beb7953ccb96
+ARG SC_CHAIN_REF=501a0679f8ab5d0f61f9cda1522b3efbf1800266
 ARG LAMMPS_GIT_URL=https://github.com/lammps/lammps.git
-ARG LAMMPS_GIT_REF=develop
+# Pinned, not develop. btree_chromo's fix_brownian_kokkos uses the pre-2025
+# Kokkos ArrayTypes API (t_x_array, t_v_array, t_f_array_const). Upstream has
+# since moved those behind the mixed-precision refactor (KK_ACC_FLOAT), so
+# newer LAMMPS fails to compile the DNA additions. This is the release the
+# production images were built from.
+ARG LAMMPS_GIT_REF=stable_22Jul2025
 ARG N_PROC_MAKE=
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -62,7 +77,10 @@ RUN source /opt/conda/etc/profile.d/conda.sh && \
     conda clean -afy
 
 # ---------- odecell ----------
-RUN git clone --depth 1 "${ODECELL_REPO}" /Software/odecell
+RUN mkdir -p /Software/odecell && cd /Software/odecell && \
+    git init -q && git remote add origin "${ODECELL_REPO}" && \
+    git fetch -q --depth 1 origin "${ODECELL_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN source /opt/conda/etc/profile.d/conda.sh && \
     conda activate lm_2.5_dev && \
@@ -75,7 +93,10 @@ RUN source /opt/conda/etc/profile.d/conda.sh && \
     pip install .
 
 # ---------- sc_chain_generation ----------
-RUN git clone --depth 1 "${SC_CHAIN_REPO}" /Software/sc_chain_generation
+RUN mkdir -p /Software/sc_chain_generation && cd /Software/sc_chain_generation && \
+    git init -q && git remote add origin "${SC_CHAIN_REPO}" && \
+    git fetch -q --depth 1 origin "${SC_CHAIN_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN source /opt/conda/etc/profile.d/conda.sh && conda activate lm_2.5_dev && \
     cd /Software/sc_chain_generation/src && make gen_sc_chain && \
@@ -150,7 +171,10 @@ ENV CC=/usr/local/bin/gcc \
 RUN mkdir -p ${LAMMPS_src} && \
     git clone --depth 1 --branch "${LAMMPS_GIT_REF}" "${LAMMPS_GIT_URL}" "${LAMMPS_src}/lammps"
 
-RUN git clone --depth 1 --branch "${BTREE_REF}" "${BTREE_REPO}" /Software/btree_chromo
+RUN mkdir -p /Software/btree_chromo && cd /Software/btree_chromo && \
+    git init -q && git remote add origin "${BTREE_REPO}" && \
+    git fetch -q --depth 1 origin "${BTREE_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN set -eux; \
     L="${LAMMPS_src}/lammps"; \
@@ -221,7 +245,10 @@ RUN set -eux; \
 # ---------- Lattice Microbes (public) ----------
 ENV LM_dir=/Software/Lattice_Microbes
 
-RUN git clone --depth 1 --branch "${LM_REF}" "${LM_REPO}" ${LM_dir}
+RUN mkdir -p ${LM_dir} && cd ${LM_dir} && \
+    git init -q && git remote add origin "${LM_REPO}" && \
+    git fetch -q --depth 1 origin "${LM_REF}" && \
+    git checkout -q FETCH_HEAD
 
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
