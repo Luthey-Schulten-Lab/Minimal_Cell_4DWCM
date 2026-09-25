@@ -27,7 +27,6 @@ from utility.LatticeFunctions import *
 
 import utility.GIP_rates as GIP
 
-import processes.FreeDTS_functions as fdf
 
 
 # Biological time between DNA hook updates (seconds); must match Hook.next_DNA_time increment.

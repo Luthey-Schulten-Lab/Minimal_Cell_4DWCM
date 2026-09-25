@@ -43,7 +43,6 @@ Install these before running (same conda env for LM + odecell):
 | odecell | https://github.com/Luthey-Schulten-Lab/odecell |
 | btree_chromo (Kokkos LAMMPS) | https://github.com/Luthey-Schulten-Lab/btree_chromo_gpu (`btree_chromo_v2.0.0` branch) |
 | sc_chain_generation | https://github.com/Luthey-Schulten-Lab/sc_chain_generation |
-| FreeDTS (optional) | https://github.com/weria-pezeshkian/FreeDTS |
 
 Use current `btree_chromo_v2.0.0` btree_chromo (SMC count from `loop_params` / WCM
 proteome is already upstream). See [`PROTEIN_SCIENCE_NOTES.md`](PROTEIN_SCIENCE_NOTES.md)

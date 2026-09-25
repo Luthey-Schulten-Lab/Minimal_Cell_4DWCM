@@ -21,7 +21,6 @@ import time as TIME
 
 import processes.RibosomesRDME as ribosomesRDME
 
-import processes.FreeDTS_functions as fdf
 
 from utility.LatticeFunctions import *
 

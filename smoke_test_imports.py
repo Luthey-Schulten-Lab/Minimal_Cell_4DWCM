@@ -19,7 +19,7 @@ MODULES = [
     # leaves first, then upward through the dependency graph
     "utility.LatticeFunctions", "utility.GIP_rates", "utility.Integrate",
     "utility.FileSaving",
-    "processes.Diffusion", "processes.FreeDTS_functions",
+    "processes.Diffusion",
     "processes.InitRdmeDna", "processes.Rxns_CME",
     "processes.Rxns_RDME", "processes.Rxns_ODE",
     "processes.ImportInitialConditions", "processes.RegionsAndComplexes",
