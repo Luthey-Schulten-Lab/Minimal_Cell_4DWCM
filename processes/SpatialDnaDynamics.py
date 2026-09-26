@@ -3,6 +3,9 @@ Chromosome configuration via btree_chromo (Benjamin Gilbert), including replicat
 
 Authors
 -------
+Ron Acda — resident btree_chromo --serve process, array-based chromosome lattice update,
+    lean output (wcm_sidecar)
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — SMC looping hooks, BD walltime scale, in-place LAMMPS update,
     CPU isolation (``DNA_CPU_CORES``), topo/loops rescue paths
 Zane Thornburg — original btree_chromo coupling and DNA particle remap
@@ -11,6 +14,7 @@ Zane Thornburg — original btree_chromo coupling and DNA particle remap
 import numpy as np
 
 import os
+import re
 
 import subprocess
 
@@ -37,6 +41,9 @@ TEMPLATE_HOOK_BATCH_S = 2.0
 
 # Syn3A chromosome length in 10 bp RDME/LAMMPS beads (loop_params N=)
 SYN3A_CHROMO_BEADS = 54338
+
+
+_wcm_coords_cache = [None]   # (DNA_lattice_coords dict, its (n, 3) int64 array) of the last placeNewChromosome
 
 
 def _dna_work_dir(sim_properties):
@@ -68,6 +75,125 @@ def _translocate_steps_for_hook(sim_properties):
     speed = _translocate_speed(sim_properties)
     hook_s = sim_properties.get('dna_hook_interval_s', DNA_HOOK_INTERVAL_S)
     return max(1, int(round(speed * hook_s / TEMPLATE_HOOK_BATCH_S)))
+
+
+
+# the run does not write what the kept files regenerate byte for byte (utility/wcm-compress):
+#   DNA/chromosome.lammpstrj   -> btree dumps each hook's frame into wcm_sidecar/hookdump.lammpstrj; the frame is kept in
+#                                 wcm_sidecar/literal/chromosome_literal.lammpstrj (+ .idx) only for the first hook (frames 0, 1)
+#                                 and for irregular frames (a shell atom retyped by a loop leg past the DNA), then the file is dropped
+#   DNA/data.lammps_<step>     -> one rolling wcm_sidecar/data.lammps_current (the btree -> LAMMPS hand-off); the first hook's
+#                                 file is written straight into wcm_sidecar/literal/DNA/ (it holds the equilibrated start)
+#   counts_fluxes_temp/*.csv   -> pruned after the final concatenation when each file equals its column (FileSaving)
+# WCM_LEAN_OUTPUT=0 = the original layout. WCM_LEAN_SHADOW=1 = lean AND the original files (gate runs).
+def _lean():
+    return os.environ.get('WCM_LEAN_OUTPUT', '1') != '0'
+
+
+def _lean_shadow():
+    return _lean() and os.environ.get('WCM_LEAN_SHADOW', '0') == '1'
+
+
+def _sidecar_dir(workDir):
+    d = os.path.dirname(workDir.rstrip('/')) + '/wcm_sidecar/'
+    os.makedirs(d + 'literal/DNA', exist_ok=True)
+    return d
+
+
+def _data_path(workDir, timestep, sim_properties):
+    if not _lean():
+        return workDir + 'data.lammps_{:d}'.format(timestep)
+    if _is_first_dna_step(sim_properties):
+        return _sidecar_dir(workDir) + 'literal/DNA/data.lammps_{:d}'.format(timestep)
+    return _sidecar_dir(workDir) + 'data.lammps_current'
+
+
+def _output_details(workDir):
+    if not _lean():
+        return 'simulator_set_output_details:' + workDir + ',chromosome\n'
+    return 'simulator_set_output_details:' + _sidecar_dir(workDir) + ',hookdump\n'
+
+
+def _split_frames(b):
+    o = [m.start() for m in re.finditer(rb'ITEM: TIMESTEP\n', b)]
+    return [b[a:e] for a, e in zip(o, o[1:] + [len(b)])]
+
+
+def _frame_irregular(fr, n_dna):
+    """A shell atom (id > n_dna) with a type other than 1: a loop leg past the DNA retyped it; the frame is not regenerable."""
+    body = fr.split(b'ITEM: ATOMS', 1)[1].split(b'\n', 1)[1]
+    for line in body.split(b'\n'):
+        if line:
+            i, t = line.split(b' ', 2)[:2]
+            if int(i) > n_dna and t != b'1':
+                return True
+    return False
+
+
+def _lean_setup_sidecar(sim_properties, workDir, step):
+    """First hook: LEAN.json and the exact btree build + BD lengths the regenerators replay with (~8 MB)."""
+    import json, shutil
+    sc = _sidecar_dir(workDir)
+    if os.path.exists(sc + 'LEAN.json'):
+        return
+    headDir = sim_properties['dna_software_directory']; bdir = headDir + 'btree_chromo/'
+    build = os.environ.get('BTREE_BUILD_DIR', 'build')
+    try:
+        os.makedirs(sc + 'btree/' + build + '/apps', exist_ok=True)
+        shutil.copy2(bdir + build + '/apps/btree_chromo', sc + 'btree/' + build + '/apps/btree_chromo')
+        model = os.environ.get('DNA_MODEL_DIR_NAME', 'LAMMPS_DNA_model_kk')
+        if not os.path.exists(sc + 'btree/' + model):
+            shutil.copytree(bdir + model, sc + 'btree/' + model)
+        ops = open(workDir + 'chromosome_operations_{:d}.inp'.format(step)).read()
+        m = re.search(r'^load_BD_lengths:(\S+)$', ops, re.M)
+        if m:
+            os.makedirs(sc + 'input_data', exist_ok=True); shutil.copy2(m.group(1), sc + 'input_data/' + os.path.basename(m.group(1)))
+    except Exception as e:
+        print('could not copy the btree build into the sidecar:', e)
+    json.dump({'format': 1, 'writer': 'lean output', 'run_dir_name': os.path.basename(os.path.dirname(workDir.rstrip('/'))),
+               'not_written': ['DNA/chromosome.lammpstrj', 'DNA/data.lammps_<step>', 'counts_fluxes_temp/counts_fluxes_<t>.csv'],
+               'regenerate_with': 'utility/wcm-compress/extract_run.sh',
+               'btree_build_dir': build, 'shadow': _lean_shadow()}, open(sc + 'LEAN.json', 'w'), indent=1)
+
+
+def _lean_collect(sim_properties, workDir, step):
+    """After hook <step>'s outputs are complete: keep its dumped frame(s) only if not regenerable, then drop the scratch dump."""
+    if not _lean():
+        return
+    sc = _sidecar_dir(workDir); hd = sc + 'hookdump.lammpstrj'
+    if not os.path.exists(hd):
+        return
+    b = open(hd, 'rb').read(); frames = _split_frames(b)
+    steps = sorted(int(m.group(1)) for m in (re.match(r'dna_monomers_(\d+)\.bin$', f) for f in os.listdir(workDir)) if m)
+    k = steps.index(step) + 1 if step in steps else len(steps)
+    first = (steps and step == steps[0])
+    idx = list(range(0, len(frames))) if first else list(range(k - len(frames) + 1, k + 1))
+    n_dna = os.path.getsize(workDir + 'dna_monomers_{:d}.bin'.format(step)) // 24
+    keep = [(i, fr) for i, fr in zip(idx, frames) if first or _frame_irregular(fr, n_dna)]
+    if keep:
+        with open(sc + 'literal/chromosome_literal.lammpstrj', 'ab') as f:
+            for _, fr in keep: f.write(fr)
+        with open(sc + 'literal/chromosome_literal.idx', 'a') as f:
+            for i, _ in keep: f.write('%d\n' % i)
+    if _lean_shadow():
+        with open(workDir + 'chromosome.lammpstrj', 'ab') as f: f.write(b)
+        import shutil
+        src = sc + ('literal/DNA/data.lammps_{:d}'.format(step) if first else 'data.lammps_current')
+        if os.path.exists(src): shutil.copy2(src, workDir + 'data.lammps_{:d}'.format(step))
+    if first:
+        _lean_setup_sidecar(sim_properties, workDir, step)
+    os.remove(hd)
+
+
+def leanFinalize(sim_properties):
+    """End of the run: wait for the last DNA hook and collect its frame (the next hook would have done it)."""
+    if _lean() and sim_properties.get('last_DNA_step') is not None:
+        workDir = sim_properties['working_directory'] + 'DNA/'
+        if os.path.exists(_sidecar_dir(workDir) + 'hookdump.lammpstrj'):
+            checkLastChromosome(sim_properties)
+        cur = _sidecar_dir(workDir) + 'data.lammps_current'       # the rolling hand-off file is scratch once the run ends
+        if os.path.exists(cur):
+            os.remove(cur)
 
 
 def _is_first_dna_step(sim_properties):
@@ -168,6 +294,120 @@ def _ensure_chromo_topo(sim_properties, step=None):
     print('WARNING: missing {}; writing pre-replication topology ({} beads)'.format(
         topo_path, n_beads))
     return _write_prereplication_chromo_topo(sim_properties, step, n_beads)
+
+
+# the btree_chromo process started for each DNA step, so checkLastChromosome can wait on its exit instead of polling
+# for its output files at 0.5-2 s intervals (on average a quarter to a full second of extra RDME idling per DNA hook whenever
+# btree is the longer arm; a size check can also see a file btree is still writing). {step: Popen}
+_btree_procs = {}
+
+
+# one resident `btree_chromo --serve` process runs the DNA steps' directive files one after another (each through a
+# fresh btree driver, as a separate process would), so the ~1.6 s per DNA step of process start, CUDA context, MPI and Kokkos/LAMMPS
+# initialisation is paid once per run. A step handle waits on the server's "BTREE_SERVE_DONE <rc> <s> <file>" line the way
+# checkLastChromosome waited on the step's process exit. Any failure (a binary without --serve, a server that exits or reports a
+# nonzero rc) falls back to the per-step process for that step and every later one. WCM_BTREE_SERVE=0 disables the server.
+import atexit, select
+
+
+class _BtreeServer:
+    def __init__(self, cmd, env):
+        self.cmd, self.env, self.proc, self.dead = list(cmd), dict(env), None, False
+
+    def start(self, timeout=120.0):
+        try:
+            self.proc = Popen(self.cmd + ['--serve'], stdin=PIPE, stdout=PIPE, stderr=None, env=self.env, bufsize=0)   # unbuffered: select sees every line
+        except Exception as exc:
+            print('btree server: start failed ({}), per-step processes'.format(exc)); self.dead = True; return False
+        line = self._readline(timeout)
+        if line is None or not line.startswith('BTREE_SERVE_READY'):
+            print('btree server: no READY line ({!r}), per-step processes'.format(line)); self.stop(); self.dead = True; return False
+        print('btree server: started, pid {}'.format(self.proc.pid))
+        return True
+
+    def _readline(self, timeout):
+        """Next protocol line, None on timeout or EOF (EOF marks the server dead)."""
+        end = timepy.time() + timeout
+        while True:
+            left = end - timepy.time()
+            if left <= 0:
+                return None
+            r, _, _ = select.select([self.proc.stdout], [], [], left)
+            if not r:
+                return None
+            raw = self.proc.stdout.readline()
+            if not raw:
+                self.dead = True
+                return None
+            line = raw.decode(errors='replace').strip()
+            if line.startswith('BTREE_SERVE_'):
+                return line
+
+    def submit(self, path):
+        try:
+            self.proc.stdin.write((path + '\n').encode()); self.proc.stdin.flush(); return True
+        except Exception as exc:
+            print('btree server: submit failed ({}), per-step processes'.format(exc)); self.dead = True; return False
+
+    def stop(self):
+        if self.proc is None:
+            return
+        try:
+            if self.proc.poll() is None:
+                self.proc.stdin.write(b'EXIT\n'); self.proc.stdin.flush(); self.proc.wait(timeout=30)
+        except Exception:
+            try: self.proc.kill()
+            except Exception: pass
+        self.proc = None
+
+
+class _ServedStep:
+    """Stands in for the step's Popen in _btree_procs: wait(timeout) returns when the server reports the file done."""
+    def __init__(self, server, path, fallback_cmd, env):
+        self.server, self.path, self.fallback_cmd, self.env, self.done, self.rc = server, path, fallback_cmd, env, False, None
+
+    def wait(self, timeout=None):
+        if self.done:
+            return self.rc
+        end = None if timeout is None else timepy.time() + timeout
+        while not self.server.dead:
+            left = 1e9 if end is None else end - timepy.time()
+            if left <= 0:
+                raise subprocess.TimeoutExpired(self.path, timeout)
+            line = self.server._readline(min(left, 3600.0))
+            if line is None:
+                continue
+            parts = line.split(' ', 3)
+            if parts[0] == 'BTREE_SERVE_DONE' and len(parts) == 4 and parts[3] == self.path:
+                self.rc = int(parts[1])
+                print('btree server: {} done rc={} in {} s'.format(self.path, parts[1], parts[2]))
+                self.done = True
+                if self.rc != 0:   # as a failed per-step process: no rerun; later steps get their own processes
+                    print('btree server: nonzero rc, per-step processes from now on'); self.server.stop(); self.server.dead = True
+                return self.rc
+        # the server died with this step unfinished: run the step in its own process, as without the server
+        print('btree server: unavailable, running {} in its own process'.format(self.path))
+        p = Popen(self.fallback_cmd, stdin=None, stdout=subprocess.DEVNULL, stderr=None, env=self.env)
+        self.rc = p.wait(timeout=None if end is None else max(1.0, end - timepy.time()))
+        self.done = True
+        return self.rc
+
+
+_btree_server = None
+
+
+def _launch_btree(launch_cmd, directives, env):
+    """The step's handle: a served request when the resident server runs, else the step's own process."""
+    global _btree_server
+    if os.environ.get('WCM_BTREE_SERVE', '1') != '0':
+        base = launch_cmd[:-1]
+        if _btree_server is None:
+            _btree_server = _BtreeServer(base, env)
+            if _btree_server.start():
+                atexit.register(_btree_server.stop)
+        if not _btree_server.dead and _btree_server.cmd == list(base) and _btree_server.env == dict(env) and _btree_server.submit(directives):
+            return _ServedStep(_btree_server, directives, launch_cmd, env)
+    return Popen(launch_cmd, stdin=None, stdout=subprocess.DEVNULL, stderr=None, env=env)
 
 
 def _dna_outputs_ready(workDir, step):
@@ -310,7 +550,7 @@ def _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_sta
         f.write('map_replication\n')
 
     f.write('write_loops:' + _loops_file(sim_properties, timestep) + '\n')
-    f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+    f.write('sys_write_sim_read_LAMMPS_data:' + _data_path(workDir, timestep, sim_properties) + '\n')
 
     use_fork_repulsion = bool(sim_properties.get('dna_fork_partition_repulsion', False))
     if use_fork_repulsion and not checkDaughtersFullyPartitioned(sim_properties):
@@ -320,9 +560,9 @@ def _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_sta
     f.write('translocate:{:d},T\n'.format(_translocate_steps_for_hook(sim_properties)))
     # Prefer in-place LAMMPS coord update vs a second full write/read (dna_second_roundtrip_inplace).
     if bool(sim_properties.get('dna_second_roundtrip_inplace', True)):
-        f.write('sys_update_lammps_inplace:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        f.write('sys_update_lammps_inplace:' + _data_path(workDir, timestep, sim_properties) + '\n')
     else:
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        f.write('sys_write_sim_read_LAMMPS_data:' + _data_path(workDir, timestep, sim_properties) + '\n')
     f.write('simulator_form_loops:F\n')
     f.write('simulator_minimize_topoDNA_harmonic:1000\n')
     f.write('simulator_set_delta_t:2.5E+7\n')
@@ -490,6 +730,18 @@ def checkLastChromosome(sim_properties):
     DNA_wait = 0.0
     sleep_interval = 0.5  # Start with 0.5 second checks for faster detection
     wait_timeout = float(sim_properties.get('dna_btree_wait_timeout_s', DNA_BTREE_WAIT_TIMEOUT_S))
+
+    # when this process launched btree for this step, wait for it to exit (returns as soon as it does), then check the
+    # outputs as before; with no handle (e.g. after a restart) or no outputs after the exit, the polling loop below runs as before.
+    proc = _btree_procs.pop(step, None)
+    if proc is not None and not last_DNA_complete:
+        t_wait0 = timepy.time()
+        try:
+            proc.wait(timeout=wait_timeout)
+        except subprocess.TimeoutExpired:
+            pass
+        DNA_wait = timepy.time() - t_wait0
+        last_DNA_complete = _dna_outputs_ready(workDir, step)
     
     while not last_DNA_complete:
         
@@ -516,6 +768,14 @@ def checkLastChromosome(sim_properties):
             sleep_interval = 2.0  # After 15 seconds: check every 2s
         
     print("Waited seconds: "+str(DNA_wait))
+
+    if _lean():
+        if proc is not None:
+            try:
+                proc.wait(timeout=wait_timeout)            # the whole directive list finished (dump, monomers, loops, state)
+            except subprocess.TimeoutExpired:
+                pass
+        _lean_collect(sim_properties, workDir, step)
         
     print("Chromosome configuration ready to load")
         
@@ -647,26 +907,17 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
                 raise ValueError(f"DNA file has 0 particles and rescue file also unavailable. Cannot proceed.")
         
         print(DNAcoords.shape)
-        
-        for i in range(len(DNAcoords)):
-#         for DNAparticle in DNAcoords:
-            DNAparticle = DNAcoords[i]
-            
-            x = DNAparticle[0]
-            y = DNAparticle[1]
-            z = DNAparticle[2]
-            
-            x_lattice = np.ceil((x*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_x
-            y_lattice = np.ceil((y*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_y
-            z_lattice = np.ceil((z*1e-9)/(10*sim_properties['lattice_spacing']))+N_2_z
-            
-            DNAsites[int(x_lattice),int(y_lattice),int(z_lattice)] = True
-            
-            DNA_lattice_coords[i+1] = [int(x_lattice),int(y_lattice),int(z_lattice)]
-            
-#             lattice.addParticle(int(z_lattice),int(y_lattice),int(x_lattice),3)
-            
-        
+        # the per-monomer loop as array operations (the same float64 operations element by element; int() truncation =
+        # astype(int64)); DNA_lattice_coords gets the same keys and lists of Python ints. The array is kept for moveDnaParticles.
+        scale = 10*sim_properties['lattice_spacing']
+        lat = np.empty((len(DNAcoords), 3), dtype=np.int64)
+        lat[:, 0] = (np.ceil((DNAcoords[:, 0]*1e-9)/scale)+N_2_x).astype(np.int64)
+        lat[:, 1] = (np.ceil((DNAcoords[:, 1]*1e-9)/scale)+N_2_y).astype(np.int64)
+        lat[:, 2] = (np.ceil((DNAcoords[:, 2]*1e-9)/scale)+N_2_z).astype(np.int64)
+        DNAsites[lat[:, 0], lat[:, 1], lat[:, 2]] = True
+        DNA_lattice_coords = dict(zip(range(1, len(DNAcoords)+1), lat.tolist()))
+        _wcm_coords_cache[0] = (DNA_lattice_coords, lat)
+
     elif fileType=='xyz':
         
         with open(DNAfile,'rb') as f:
@@ -697,54 +948,41 @@ def placeNewChromosome(time, lattice, sim_properties, region_dict, ribo_site_dic
         
 #     sim_properties['DNAcoords'] = DNA_lattice_coords
 
-    oldDNA = np.argwhere(region_dict['DNA']['shape']==True)
-    
-    for site in oldDNA:
-
-        if region_dict['cytoplasm']['full_shape'][site[0], site[1], site[2]] == True:
-
-            lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['cytoplasm']['index'])
-
-            continue
-
-        if region_dict['outer_cytoplasm']['full_shape'][site[0], site[1], site[2]] == True:
-
-            lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['outer_cytoplasm']['index'])
-
-            continue
-            
-        if region_dict['membrane']['shape'][site[0], site[1], site[2]] == True:
-
-            lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['membrane']['index'])
-
-            continue
-
+    # the site-type updates of the former per-site loops, written through the site-lattice view (indexed [a3, a2, a1]
+    # for API calls (a1, a2, a3); the calls here pass (site[2], site[1], site[0]) of a mask index, so the view is indexed like the
+    # masks), with the same precedence per former-DNA site (cytoplasm, outer cytoplasm, membrane, otherwise each ribosome type's
+    # cross then centre in dict order, later ones winning) and then the new DNA sites. One real setSiteType call (value unchanged)
+    # clears the lattice's GPU-synced flag whenever the former loops made at least one call.
+    sv = lattice.getSiteLatticeView()
+    A = region_dict['DNA']['shape'] == True
+    called = np.zeros(A.shape, dtype=bool)
+    if A.any():
+        c = A & (region_dict['cytoplasm']['full_shape'] == True)
+        o = A & ~c & (region_dict['outer_cytoplasm']['full_shape'] == True)
+        m = A & ~c & ~o & (region_dict['membrane']['shape'] == True)
+        r = A & ~c & ~o & ~m
         for ribo_type, type_dict in ribo_site_dict.items():
-            
-            if region_dict[type_dict['cross_idx']]['shape'][site[0], site[1], site[2]] == True:
-                
-                crossID = type_dict['cross_idx']
-                
-                lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict[crossID]['index'])
-        
-            if region_dict[type_dict['center_idx']]['shape'][site[0], site[1], site[2]] == True:
-                
-                centerID = type_dict['center_idx']
+            crossID = type_dict['cross_idx']; centerID = type_dict['center_idx']
+            hit = r & (region_dict[crossID]['shape'] == True); sv[hit] = region_dict[crossID]['index']; called |= hit
+            hit = r & (region_dict[centerID]['shape'] == True); sv[hit] = region_dict[centerID]['index']; called |= hit
+        sv[m] = region_dict['membrane']['index']
+        sv[o] = region_dict['outer_cytoplasm']['index']
+        sv[c] = region_dict['cytoplasm']['index']
+        called |= c | o | m
 
-                lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict[centerID]['index'])
-            
-    
     region_dict['DNA']['shape'] = DNAsites
-    
+
     region_dict['cytoplasm']['shape'] = region_dict['cytoplasm']['full_shape'] & ~region_dict["DNA"]["shape"]
     region_dict['outer_cytoplasm']['shape'] = region_dict['outer_cytoplasm']['full_shape'] & ~region_dict["DNA"]["shape"]
-    
-    newDNAsites = np.argwhere(region_dict['DNA']['shape']==True)
-    
-    for site in newDNAsites:
-        
-        lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), region_dict['DNA']['index'])
-    
+
+    newDNA = region_dict['DNA']['shape'] == True
+    sv[newDNA] = region_dict['DNA']['index']
+    called |= newDNA
+    first = np.argwhere(called)
+    if len(first) > 0:
+        site = first[0]
+        lattice.setSiteType(int(site[2]), int(site[1]), int(site[0]), int(sv[site[0], site[1], site[2]]))
+
     print("Updated DNA Sites")
     
     return region_dict, DNA_lattice_coords
@@ -802,9 +1040,13 @@ def moveDnaParticles(sim_properties, lattice, DNA_lattice_coords):
 
     # Candidate DNA sites (in lattice.addParticle arg order = [z, y, x]) for
     # relocating a particle when its target voxel is already at max occupancy.
-    _dna_site_arr = (np.array([[v[2], v[1], v[0]] for v in DNA_lattice_coords.values()],
-                              dtype=np.int64)
-                     if DNA_lattice_coords else None)
+    _cached = _wcm_coords_cache[0]
+    if _cached is not None and _cached[0] is DNA_lattice_coords:   # the same values, from placeNewChromosome's array
+        _dna_site_arr = np.ascontiguousarray(_cached[1][:, ::-1]) if len(_cached[1]) else None
+    else:
+        _dna_site_arr = (np.array([[v[2], v[1], v[0]] for v in DNA_lattice_coords.values()],
+                                  dtype=np.int64)
+                         if DNA_lattice_coords else None)
 
     for locusTag, locusDict in genome.items():
         
@@ -980,7 +1222,7 @@ def runNewChromosome(time, sim_properties):
         launch_cmd = ["taskset", "-c", dna_cores] + DNAargs
         print("btree_chromo pinned to CPUs {} (taskset)".format(dna_cores))
 
-    Popen(launch_cmd, stdin=None, stdout=subprocess.DEVNULL, stderr=None, env=env)
+    _btree_procs[timestep] = _launch_btree(launch_cmd, DirectivesFname, env)
     
     lastStep = sim_properties['last_DNA_step']
     
@@ -1089,7 +1331,7 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
         f.write('simulator_set_nProc:{:d}\n'.format(processor_number))
         f.write('simulator_set_DNA_model:' + headDir + 'btree_chromo/' + os.environ.get('DNA_MODEL_DIR_NAME', 'LAMMPS_DNA_model_kk') + '\n')
 #         f.write('simulator_set_output_details:' + workDir + ',chromosome_{:d}\n'.format(timestep))
-        f.write('simulator_set_output_details:' + workDir + ',chromosome\n'.format(timestep))
+        f.write(_output_details(workDir))
 
         f.write('simulator_set_delta_t:1.0E+5\n')
         
@@ -1102,7 +1344,7 @@ def writeChromosomeInputFile(time, sim_properties, updateRegions):
 
         f.write('dump_topology:'+ workDir +'chromo_topo_{:d}.dat,1\n'.format(timestep))
 
-        f.write('sys_write_sim_read_LAMMPS_data:' + workDir + 'data.lammps_{:d}\n'.format(timestep))
+        f.write('sys_write_sim_read_LAMMPS_data:' + _data_path(workDir, timestep, sim_properties) + '\n')
 
         _write_replicate_hook_protocol(f, sim_properties, timestep, workDir, rep_started)
 

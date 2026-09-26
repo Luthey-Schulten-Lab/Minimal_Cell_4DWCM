@@ -3,6 +3,8 @@ RDME hook solver for the 4DWCM.
 
 Authors
 -------
+Ron Acda — site-type-only hook return (Lattice Microbes uploads the site types alone)
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — performance optimizations (ODE Cython cache,
     CME/count communication, file-save path)
 Zane Thornburg — original hook algorithm and 4DWCM coupling structure
@@ -22,6 +24,8 @@ import processes.MC_CME as MCCME
 import processes.ImportInitialConditions as IC
 import processes.Communicate as communicate
 import utility.FileSaving as save
+import os as _wcm_os
+_SITE_ONLY_UPLOAD_OFF = _wcm_os.environ.get('WCM_SITE_ONLY_UPLOAD_OFF') is not None
 
 from jLM.RegionBuilder import RegionBuilder
 from jLM.RDME import Sim as RDMESim
@@ -140,6 +144,9 @@ class MyOwnSolver:
 
         
         time = t
+        # set wherever this hook may change the particle lattice; a hook that changed only site types returns 4 and
+        # Lattice Microbes uploads the site types alone (WCM_SITE_ONLY_UPLOAD_OFF=1: such hooks return 1 as before)
+        particles_touched = (time == 0)
         
         print('Current biological time: ', time)
         
@@ -176,6 +183,7 @@ class MyOwnSolver:
             
             # Chromosome BD + morphology
             if (time >= self.next_DNA_time):
+                particles_touched = True
                 
                 print("Updating SA and Volume")
                 
@@ -263,6 +271,7 @@ class MyOwnSolver:
                     lattice, self.sim_properties, self.region_dict, self.ribo_site_dict,
                     updateTranslat=updateTranslat,
                 )
+                particles_touched = particles_touched or ribosomesRDME.wcm_last_placement_touched_particles
 
                 region_dict = ribosomesRDME.updateRiboSites(
                     lattice, ribo_site_dict, self.region_dict, self.sim_properties,
@@ -279,6 +288,7 @@ class MyOwnSolver:
 
             # Global CME
             if (time >= self.next_gCME_time):
+                particles_touched = True
 
                 cmestart = TIME.time()
 
@@ -323,6 +333,7 @@ class MyOwnSolver:
 
             # Metabolism (ODE)
             if (time >= self.next_metabolism_time):
+                particles_touched = True
 
                 odestart = TIME.time()
 
@@ -368,6 +379,8 @@ class MyOwnSolver:
             print('Return 1 time: ', time)
             self.complete_steps = self.complete_steps + 1
             self.endLastHook = TIME.time()
+            if not particles_touched and not _SITE_ONLY_UPLOAD_OFF:
+                return 4
             return 1
 
 

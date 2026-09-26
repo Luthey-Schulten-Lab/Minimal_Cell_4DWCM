@@ -3,6 +3,8 @@ Fresh-start entry point for the 4DWCM Minimal Cell simulation.
 
 Authors
 -------
+Ron Acda — lean-output collection at the end of the run
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — wall-clock timing;
 Zane Thornburg — original driver and CLI
 """
@@ -139,6 +141,12 @@ print('Starting simulation run...')
 print('='*80)
 
 sim.run(solver=solver, cudaDevices=[int(args.cudaDevices)])
+
+try:                                   # collect the last DNA hook's frame for the lean sidecar
+    import processes.SpatialDnaDynamics as _sdd
+    _sdd.leanFinalize(sim_properties)
+except Exception as _e:
+    print('leanFinalize failed:', _e)
 
 sim_end_time = time.time()
 total_sim_time = sim_end_time - sim_start_time

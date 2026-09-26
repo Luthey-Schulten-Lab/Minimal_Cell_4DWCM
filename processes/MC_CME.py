@@ -3,6 +3,8 @@ Global CME simulation build and solve.
 
 Authors
 -------
+Ron Acda — CME model reused as a template, duplicate-reaction check with a set, parameters computed once per run
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — persistent CME worker (avoids per-hook ``os.system`` / import cost)
 Zane Thornburg — original CME model construction and run path
 """
@@ -156,6 +158,82 @@ def _run_via_worker(sim_properties, csim_filename):
 
 
 #########################################################################################
+
+# --- Fast model-file save -------------------------------------------------------------------
+# pyLM's CMESimulation.save builds the dense 2332 x 1139 stoichiometry and dependency lists in Python and
+# pushes each of their 5.3 M entries into a protobuf through its own SWIG call (~0.9 s per biological
+# second). Between seconds only the initial counts and the rate constants change. When the species list,
+# the reaction topology and the parameters equal the previous save's, the previous file (saved before the
+# solver appended its trajectory) is copied and only those two datasets are rewritten, with the rates
+# computed by the same arithmetic as pyLM's buildReactionModel. Anything else falls back to csim.save.
+import shutil
+import h5py
+
+_CME_TEMPLATE = {'sig': None, 'path': None}
+
+
+def _cme_signature(csim):
+    rxn = tuple((rx[0], rx[1]) for rx in csim.reactions)
+    return (tuple(csim.species_id), rxn, csim.volume is None, tuple(sorted(csim.parameters.items())))
+
+
+def _cme_rates(csim):
+    """Rate constants exactly as pyLM CMESimulation.buildReactionModel scales them."""
+    out = []
+    for rx in csim.reactions:
+        reactant, rate = rx[0], rx[2]
+        if csim.volume != None:
+            if isinstance(reactant, tuple):
+                rate /= (6.022e23*float(csim.volume))
+            elif reactant == '':
+                rate *= 6.022e23*float(csim.volume)
+        out.append(rate)
+    return out
+
+
+def _save_cme(csim, filename, template_dir):
+    sig = _cme_signature(csim)
+    tpl = _CME_TEMPLATE['path']
+    if sig == _CME_TEMPLATE['sig'] and tpl is not None and os.path.isfile(tpl):
+        shutil.copyfile(tpl, filename)
+        with h5py.File(filename, 'r+') as f:
+            f['Model/Reaction/InitialSpeciesCounts'][...] = np.asarray([csim.initial_counts[s] for s in csim.species_id], dtype=np.uint32)
+            f['Model/Reaction/ReactionRateConstants'][:, 0] = np.asarray(_cme_rates(csim), dtype=np.float64)
+        return 'template'
+    csim.save(filename)
+    tpl = os.path.join(template_dir, '.cme_template.lm')
+    shutil.copyfile(filename, tpl)
+    _CME_TEMPLATE['sig'], _CME_TEMPLATE['path'] = sig, tpl
+    return 'full'
+
+class _SetDedupCMESimulation(CME.CMESimulation):
+    """pyLM's CMESimulation with the duplicate-reaction test of addReaction done through a set.
+    pyLM's addReaction scans the whole reactions list (``(reactant, product, rate) in self.reactions``) for every reaction added,
+    ~650k tuple comparisons for the 1139 gCME reactions per call. The set holds the same tuples, so a reaction is a duplicate
+    exactly when the list scan found it (tuples of str/float compare and hash consistently); the reactions list, its order and
+    the logged messages are unchanged. Unhashable entries fall back to the list scan."""
+    def __init__(self, *args, **kwargs):
+        CME.CMESimulation.__init__(self, *args, **kwargs)
+        self._wcm_rxn_set = set()
+
+    def addReaction(self, reactant, product, rate):
+        if rate <= 0.0:
+            CME.LMLogger.error("In CME.addReaction, the rate must be a positive number")
+        key = (reactant, product, rate)
+        try:
+            dup = key in self._wcm_rxn_set
+            hashable = True
+        except TypeError:
+            dup = key in self.reactions
+            hashable = False
+        if dup:
+            CME.LMLogger.warning("Reaction already in model: %s -> %s : %f"%(reactant,product,rate))
+            return
+        self.reactions.append(key)
+        if hashable:
+            self._wcm_rxn_set.add(key)
+
+
 def runGCME(sim_properties):
     """
     Build, save, and solve one second of global CME.
@@ -163,7 +241,7 @@ def runGCME(sim_properties):
     csimFolder = sim_properties['working_directory']+'CME/'
     
     setupstart = TIME.time()
-    csim=CME.CMESimulation()
+    csim=_SetDedupCMESimulation()
     add_CME_species(csim, sim_properties)
     constructCME(csim, sim_properties)
    
@@ -185,7 +263,7 @@ def runGCME(sim_properties):
         print('Nothing to delete')
     
     savestart = TIME.time()
-    csim.save(CSIMfilename)
+    save_path = _save_cme(csim, CSIMfilename, csimFolder)
     savetime = TIME.time() - savestart
     
     solverstart = TIME.time()
@@ -201,7 +279,7 @@ def runGCME(sim_properties):
     
     print('  CME solver breakdown:')
     print('    Python setup:  {:.4f}s'.format(setuptime))
-    print('    File save:     {:.4f}s'.format(savetime))
+    print('    File save:     {:.4f}s ({})'.format(savetime, save_path))
     print('    C++ solver:    {:.4f}s ({:.1f}% of CME solver time)'.format(solvertime, 100*solvertime/(setuptime+savetime+solvertime)))
 
     return None

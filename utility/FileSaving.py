@@ -3,6 +3,8 @@ Write simulation outputs outside the main ``.lm`` RDME file.
 
 Authors
 -------
+Ron Acda — counts_fluxes_temp pruning after the final concatenation (lean output)
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — async lattice/restart saves, batched counts/fluxes CSV I/O,
     crash/restart recovery for count–flux files
 Zane Thornburg — original particle-count, flux, and lattice file writers
@@ -652,6 +654,7 @@ def saveCountsAndFluxes(time, sim_properties, odeResults, model, solver):
                 if remaining_files:
                     _concatenate_csv_files_optimized(temp_dir, final_csv, sim_properties)
                     print(f'FINAL: Concatenated all remaining CSV files at simulation end (time={time_int_val}, write #{write_counter}, {len(remaining_files)} files)')
+                    _lean_prune_counts_temp(temp_dir, final_csv)
                 else:
                     print(f'FINAL: No remaining temp files to concatenate at end (time={time_int_val})')
             else:
@@ -662,6 +665,29 @@ def saveCountsAndFluxes(time, sim_properties, odeResults, model, solver):
 
 
 #########################################################################################
+def _lean_prune_counts_temp(temp_dir, final_csv):
+    """after the final concatenation remove each
+    counts_fluxes_temp/counts_fluxes_<t>.csv that equals column <t> of counts_and_fluxes.csv byte for byte ('name,value' lines);
+    any file that does not is kept."""
+    if os.environ.get('WCM_LEAN_OUTPUT', '1') == '0' or os.environ.get('WCM_LEAN_SHADOW', '0') == '1':
+        return
+    try:
+        rows = open(final_csv, 'rb').read().split(b'\n')
+        if rows and rows[-1] == b'':
+            rows = rows[:-1]
+        tab = [r.split(b',') for r in rows]; col = {h: i for i, h in enumerate(tab[0])}; removed = kept = 0
+        for fn in glob.glob(temp_dir + 'counts_fluxes_*.csv'):
+            t = os.path.basename(fn)[len('counts_fluxes_'):-4].encode()
+            c = col.get(t)
+            if c is not None and open(fn, 'rb').read() == b''.join(r[0] + b',' + r[c] + b'\n' for r in tab):
+                os.remove(fn); removed += 1
+            else:
+                kept += 1
+        print(f'counts_fluxes_temp pruned ({removed} regenerable files removed, {kept} kept)')
+    except Exception as e:
+        print('counts_fluxes_temp not pruned:', e)
+
+
 def finalizeCountsAndFluxes(sim_properties):
     """
     Final cleanup function: Concatenate all remaining individual CSV files into final CSV.

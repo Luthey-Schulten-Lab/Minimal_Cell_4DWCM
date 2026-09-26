@@ -3,6 +3,8 @@ Particle-count and state exchange between RDME, CME, ODE, and morphology.
 
 Authors
 -------
+Ron Acda — translation-cost and degradation-tag particles found in one lattice pass
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — performance optimizations (fast RDME census, direct HDF5 CME
     reads, DNAcoords guards after replication)
 Zane Thornburg — original communication routines
@@ -632,6 +634,26 @@ def calculateTranslationCosts(sim_properties, lattice):
     "P":"PRO_cost", "S":"SER_cost", "T":"THR_cost", "W":"TRP_cost", "Y":"TYR_cost", "V":"VAL_cost"}
 #     ,"*":"Stop_Codon"}
     
+    # one pass over the particle lattice instead of np.argwhere(plattice == TCPidx) per gene (~17 ms each over the
+    # 16.7 M slots). _tc_rows[idx] holds exactly the rows argwhere would return for idx, in the same (C) order. They are taken
+    # before any gene is processed; a later gene's particle may since have moved to another slot of the SAME site (deleteParticle
+    # compacts a site), but only the site coordinates (coord[1..3]) are used and sites are independent, so the result is unchanged.
+    _tc_idx = {}
+    for locusTag, locusDict in genome.items():
+        if locusDict['Type'] == 'protein':
+            _tcp = 'P_' + locusTag.split('_')[1] + '_TC'
+            if sim_properties['counts'][_tcp] > 0:
+                _tc_idx[sim_properties['name_to_index'][_tcp]] = True
+    _tc_rows = {}
+    if _tc_idx:
+        _flat = plattice.reshape(-1)
+        _nz = np.flatnonzero(_flat != 0)   # the same indices; nonzero of a bool mask is ~3x faster than of uint32
+        _vals = _flat[_nz]
+        _sel = np.isin(_vals, np.fromiter(_tc_idx.keys(), dtype=_vals.dtype))
+        _nz, _vals = _nz[_sel], _vals[_sel]
+        for _v in np.unique(_vals):
+            _tc_rows[int(_v)] = np.column_stack(np.unravel_index(_nz[_vals == _v], plattice.shape))
+
     for locusTag, locusDict in genome.items():
         
         if locusDict['Type'] == 'protein':
@@ -644,7 +666,7 @@ def calculateTranslationCosts(sim_properties, lattice):
 
                 TCPidx = sim_properties['name_to_index'][translatCostParticle]
 
-                TCPcoords = np.argwhere(plattice==TCPidx)
+                TCPcoords = _tc_rows.get(int(TCPidx), np.zeros((0, plattice.ndim), dtype=np.intp))
 
                 newPtns = len(TCPcoords)
 
@@ -720,6 +742,23 @@ def calculateDegradationCosts(sim_properties, lattice):
     
     genome = sim_properties['genome']
     
+    # the degradation-tag particles found in one lattice pass (same reasoning as in calculateTranslationCosts).
+    _dt_idx = {}
+    for locusTag, locusDict in genome.items():
+        if locusDict['Type'] == 'protein':
+            _dtp = 'DT_' + locusTag.split('_')[1]
+            if sim_properties['counts'][_dtp] > 0:
+                _dt_idx[sim_properties['name_to_index'][_dtp]] = True
+    _dt_rows = {}
+    if _dt_idx:
+        _flat = plattice.reshape(-1)
+        _nz = np.flatnonzero(_flat != 0)   # the same indices; nonzero of a bool mask is ~3x faster than of uint32
+        _vals = _flat[_nz]
+        _sel = np.isin(_vals, np.fromiter(_dt_idx.keys(), dtype=_vals.dtype))
+        _nz, _vals = _nz[_sel], _vals[_sel]
+        for _v in np.unique(_vals):
+            _dt_rows[int(_v)] = np.column_stack(np.unravel_index(_nz[_vals == _v], plattice.shape))
+
     for locusTag, locusDict in genome.items():
         
         if locusDict['Type'] == 'protein':
@@ -732,7 +771,7 @@ def calculateDegradationCosts(sim_properties, lattice):
 
                 DTidx = sim_properties['name_to_index'][degCostParticle]
 
-                DTcoords = np.argwhere(plattice==DTidx)
+                DTcoords = _dt_rows.get(int(DTidx), np.zeros((0, plattice.ndim), dtype=np.intp))
 
                 mRNAdegraded = len(DTcoords)
                 

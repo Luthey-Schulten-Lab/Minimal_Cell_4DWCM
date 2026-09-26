@@ -1,5 +1,9 @@
 """
-Authors: Zane Thornburg
+Authors
+-------
+Ron Acda — transcript base counts computed once per process
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
+Zane Thornburg — original code
 
 Rate constant caluculations for genetic information processing reactions
 """
@@ -27,6 +31,9 @@ import numpy as np
 
 
 #########################################################################################
+_BASE_COUNTS = {}
+
+
 def TranscriptionRate(sim_properties, locusTag, rnasequence):
     """
     Inputs:
@@ -38,9 +45,14 @@ def TranscriptionRate(sim_properties, locusTag, rnasequence):
     """
     
     # Count how many times each base is used
-    baseCount = defaultdict(int)
-    for base in set(rnasequence):
-        baseCount[base] = rnasequence.count(base)
+    # the counts of a sequence are computed once per process (same dict contents; only sums and lookups are used)
+    cached = _BASE_COUNTS.get(rnasequence)
+    if cached is None:
+        cached = defaultdict(int)
+        for base in set(rnasequence):
+            cached[base] = rnasequence.count(base)
+        _BASE_COUNTS[rnasequence] = cached
+    baseCount = defaultdict(int, cached)
         
     proxyPromoterStrength = sim_properties['promoters'][locusTag]
     

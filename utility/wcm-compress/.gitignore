@@ -1,0 +1,3 @@
+py/bdry/bdry_gen
+*.verify_tmp/
+*.replay_tmp/
