@@ -10,7 +10,7 @@
 #   GPU_ARCH             LAMMPS -DGPU_ARCH (sm_XX)
 #   KOKKOS_ARCH_FLAGS    Kokkos -DKokkos_ARCH_*=yes flags
 #   HOST_ARCH            Kokkos host arch (default ZEN3)
-#   BTREE_NVCC_ARCH      nvcc -arch for btree fused CG
+#   BTREE_NVCC_ARCH      GPU arch(s) for btree_chromo's CUDA kernels, e.g. sm_80 or "sm_80 sm_90 sm_100" (make CUDA_ARCHS)
 ###############################################################################
 
 FROM nvcr.io/nvidia/cuda:12.8.0-devel-ubuntu22.04
@@ -238,9 +238,10 @@ RUN set -eux; \
 RUN set -eux; \
     NPROC="${N_PROC_MAKE:-$(nproc)}"; \
     cd /Software/btree_chromo && \
-    sed -i "s/-arch=sm_[0-9]\\+/-arch=${BTREE_NVCC_ARCH}/" Makefile && \
+    ARCHS="$(echo ${BTREE_NVCC_ARCH} | tr ',;' '  ')"; \
+    sed -i "s/-arch=sm_[0-9]\\+/-arch=${ARCHS%% *}/" Makefile && \
     make clean || true && \
-    make -j "${NPROC}" all
+    make -j "${NPROC}" all CUDA_ARCHS="${ARCHS}"
 
 # ---------- Lattice Microbes (public) ----------
 ENV LM_dir=/Software/Lattice_Microbes

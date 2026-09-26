@@ -1,11 +1,16 @@
 """
-Authors: Zane Thornburg
+Authors
+-------
+Ron Acda — tRNA-charging table parsed once per process
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
+Zane Thornburg — original code
 
 General functions to create reactions in a global CME simulation
 """
 
 import numpy as np
 import pandas as pd
+from processes.Rxns_ODE import _read_excel_cached
 from collections import defaultdict, OrderedDict
 
 import utility.GIP_rates as GIP
@@ -89,6 +94,24 @@ def transcriptionLong(csim, sim_properties, locusTag, rnasequence):
 
 
 #########################################################################################
+_TRNA_PARAMS = {}
+
+
+def _trna_params_cached(RXNS_params, key):
+    """{reaction name: {parameter type: value}} of the tRNA-charging sheet, as the per-call filters returned them."""
+    if key not in _TRNA_PARAMS:
+        out = {}
+        for rxnID in RXNS_params["Reaction Name"].unique():
+            rxn_params = RXNS_params.loc[ RXNS_params["Reaction Name"] == rxnID ]
+            d = {}
+            for ptype in ('amino acid', 'synthetase', 'k_atp', 'k_aa', 'k_tRNA', 'k_cat'):
+                sel = rxn_params.loc[ rxn_params["Parameter Type"] == ptype ]["Value"].values
+                if len(sel): d[ptype] = sel[0]
+            out[rxnID] = d
+        _TRNA_PARAMS[key] = out
+    return _TRNA_PARAMS[key]
+
+
 def tRNAcharging(csim, sim_properties):
     """
     Inputs:
@@ -99,8 +122,13 @@ def tRNAcharging(csim, sim_properties):
     Description:
     """
     
-    RXNS_params = pd.read_excel(sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx', sheet_name='tRNA Charging')
+    # the static tRNA-charging table is parsed from Excel once per process (Rxns_ODE's cache, copy per call)
+    RXNS_params = _read_excel_cached(sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx', sheet_name='tRNA Charging')
     
+    # the parameter rows of each charging reaction are looked up once per process (the table is static); the values are
+    # the same objects the per-call .loc filters returned
+    _p = _trna_params_cached(RXNS_params, sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx')
+
     for tRNA_aa, rnaIDlist in sim_properties['trna_map'].items():
         
 #         if tRNA_aa == 'GLN':
@@ -111,29 +139,29 @@ def tRNAcharging(csim, sim_properties):
             
         rxnID = tRNA_aa + 'TRS'
 
-        rxn_params = RXNS_params.loc[ RXNS_params["Reaction Name"] == rxnID ]
+        rp = _p[rxnID]
 
-        aaID = rxn_params.loc[ rxn_params["Parameter Type"] == 'amino acid' ]["Value"].values[0]
+        aaID = rp['amino acid']
 
-        synthetaseID = rxn_params.loc[ rxn_params["Parameter Type"] == 'synthetase' ]["Value"].values[0]
+        synthetaseID = rp['synthetase']
 
         synthetaseAtpID = synthetaseID + '_atp'
 
-        csim.addReaction(tuple([synthetaseID, 'M_atp_c']), synthetaseAtpID, rxn_params.loc[ rxn_params["Parameter Type"] == 'k_atp' ]["Value"].values[0])
+        csim.addReaction(tuple([synthetaseID, 'M_atp_c']), synthetaseAtpID, rp['k_atp'])
 
         synthetaseAaID = synthetaseAtpID + '_aa'
 
-        csim.addReaction(tuple([synthetaseAtpID, aaID]), synthetaseAaID, rxn_params.loc[ rxn_params["Parameter Type"] == 'k_aa' ]["Value"].values[0])
+        csim.addReaction(tuple([synthetaseAtpID, aaID]), synthetaseAaID, rp['k_aa'])
 
         for rnaID in rnaIDlist:
 
             synthetaseTrnaID = synthetaseAaID + '_' + rnaID
 
-            csim.addReaction(tuple([synthetaseAaID, rnaID]), synthetaseTrnaID, rxn_params.loc[ rxn_params["Parameter Type"] == 'k_tRNA' ]["Value"].values[0])
+            csim.addReaction(tuple([synthetaseAaID, rnaID]), synthetaseTrnaID, rp['k_tRNA'])
 
             chargedTrnaID = rnaID + '_ch'
 
-            csim.addReaction(synthetaseTrnaID, tuple(['M_amp_c', 'M_ppi_c', synthetaseID, chargedTrnaID]), rxn_params.loc[ rxn_params["Parameter Type"] == 'k_cat' ]["Value"].values[0])
+            csim.addReaction(synthetaseTrnaID, tuple(['M_amp_c', 'M_ppi_c', synthetaseID, chargedTrnaID]), rp['k_cat'])
 
             costID = tRNA_aa + '_cost'
             costPaidID = costID + '_paid'

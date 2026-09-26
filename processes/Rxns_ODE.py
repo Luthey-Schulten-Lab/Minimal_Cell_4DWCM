@@ -3,6 +3,8 @@ Define metabolic reactions integrated as ODEs.
 
 Authors
 -------
+Ron Acda — ODE input tables and SBML parsed once per process, faster rate-constant and binding-table lookups
+    (using an iterative LLM-guided workflow: https://github.com/quarkron/iterative-hillclimber/tree/main)
 Alfia Parvez — put Enzyme in odecell opt-space (``lb``/``ub``) for ``setSolverCached``
 Zane Thornburg — original ODE reaction definitions
 """
@@ -14,6 +16,7 @@ import odecell
 # import lipid_patch_Zane_polysomes as lipid_patch #_polysomes
 # import PPP_patch_Zane as ppp_patch
 
+import os
 import pandas as pd
 import numpy as np
 
@@ -27,6 +30,53 @@ V = ((4/3)*np.pi*(r_cell)**3)*(1000) # for a spherical cell
 countToMiliMol = 1000/(NA*V)
 
 #########################################################################################
+
+# Static input tables (kinetic_params.xlsx, protein_metabolites.xlsx) were re-parsed from Excel every
+# biological second (7 reads, ~0.47 s of a ~0.6 s metabolism call). Parse once per process; hand out a
+# copy so no caller can change what the next call sees.
+_EXCEL_CACHE = {}
+
+
+def _read_excel_cached(path, sheet_name):
+    key = (os.path.abspath(path), sheet_name, os.path.getmtime(path))
+    if key not in _EXCEL_CACHE:
+        _EXCEL_CACHE[key] = pd.read_excel(path, sheet_name=sheet_name)
+    return _EXCEL_CACHE[key].copy()
+
+
+
+_SBML_CACHE = {}
+
+
+def _read_sbml_cached(path):
+    """The SBML reaction network is only read (names, species, reactions); parse it once per process."""
+    key = (os.path.abspath(path), os.path.getmtime(path))
+    if key not in _SBML_CACHE:
+        _SBML_CACHE[key] = libsbml.readSBMLFromFile(path)
+    return _SBML_CACHE[key]
+
+
+def _rows_by(df, column):
+    """{value: DataFrame of the rows with df[column] == value}, built in one pass. Each entry equals
+    ``df.loc[df[column] == value]`` (same rows, order, index labels and dtypes); the per-reaction mask
+    compare over the whole table ran ~1 500 times per metabolism call."""
+    pos = OrderedDict()
+    for i, v in enumerate(df[column].values):
+        pos.setdefault(v, []).append(i)
+    return lambda value: df.iloc[pos.get(value, [])]
+
+
+
+def _first(df, column, value):
+    """``df.loc[df[column] == value]["Value"].values[0]`` without building two DataFrames: the Value of the first row
+    whose ``column`` equals ``value`` (same numpy scalar, same IndexError when there is none)."""
+    col = df[column].values
+    for i in range(len(col)):
+        if col[i] == value:
+            return df["Value"].values[i]
+    raise IndexError("index 0 is out of bounds for axis 0 with size 0")
+
+
 def initModel(sim_properties):
     """
     Input:
@@ -157,6 +207,72 @@ def reptModel(model):
 
 
 #########################################################################################
+_RB_STATIC = {}
+
+
+def _random_binding_static(params_file, sbmlFile):
+    """everything defineRandomBindingRxns derives from kinetic_params.xlsx and the SBML model alone, computed once per
+    process: reaction order, species lists and stoichiometries (getSpecIDs), rate law, kcatF/kcatR, the Michaelis constant of
+    each substrate/product, and the reaction's parameter rows (for getEnzymeConc). It depends on no simulation state; the pandas
+    work (concat, iterrows, per-reaction row selections and lookups) was ~170 ms of every ODE call."""
+    key = (params_file, sbmlFile)
+    cached = _RB_STATIC.get(key)
+    if cached is not None:
+        return cached
+
+    central_params = _read_excel_cached(params_file, sheet_name='Central')
+    nucleotide_params = _read_excel_cached(params_file, sheet_name='Nucleotide')
+    lipid_params = _read_excel_cached(params_file, sheet_name='Lipid')
+    cofactor_params = _read_excel_cached(params_file, sheet_name='Cofactor')
+    transport_params = _read_excel_cached(params_file, sheet_name='Transport')
+
+    metabolism_params = pd.concat([central_params, nucleotide_params, lipid_params, cofactor_params, transport_params], ignore_index=True)
+
+    reaction_list = []
+
+    for row, item in metabolism_params.iterrows():
+        if item['Reaction Name'] not in reaction_list:
+            reaction_list.append(item['Reaction Name'])
+
+    docSBML = _read_sbml_cached(sbmlFile)
+    modelSBML = docSBML.getModel()
+
+    rxnNamesSBML = [ x.name for x in modelSBML.getListOfReactions()]
+
+    rows_for = _rows_by(metabolism_params, "Reaction Name")
+
+    rxns = []
+    for rxnID in reaction_list:
+
+        rxn_info = getSpecIDs(rxnID, modelSBML, rxnNamesSBML)
+
+        rxn_params = rows_for(rxnID)
+
+        substrates_list = rxn_info[0][0]
+        substrates_stoich = rxn_info[0][1]
+        products_list = rxn_info[1][0]
+        products_stoich = rxn_info[1][1]
+
+        substrate_count = int(-np.sum(substrates_stoich))
+        product_count = int(np.sum(products_stoich))
+
+        rateLaw = Enzymatic(substrate_count, product_count)
+
+        kcatF = _first(rxn_params, "Parameter Type", "Substrate Catalytic Rate Constant")
+        kcatR = _first(rxn_params, "Parameter Type", "Product Catalytic Rate Constant")
+
+        rxn_KMs = rxn_params.loc[ rxn_params["Parameter Type"] == "Michaelis Menten Constant" ]
+
+        sub_KMs = [_first(rxn_KMs, "Related Species", metID) for metID in substrates_list]
+        prod_KMs = [_first(rxn_KMs, "Related Species", metID) for metID in products_list]
+
+        rxns.append((rxnID, substrates_list, substrates_stoich, products_list, products_stoich, rateLaw, kcatF, kcatR,
+                     sub_KMs, prod_KMs, rxn_params))
+
+    _RB_STATIC[key] = rxns
+    return rxns
+
+
 def defineRandomBindingRxns(model, sim_properties):
     """
     Inputs:
@@ -165,75 +281,32 @@ def defineRandomBindingRxns(model, sim_properties):
     Returns:
     Called by:
     Description:
+    the file-derived structure comes from _random_binding_static (built once); the model is built with the same calls,
+    in the same order and with the same arguments as before, the concentrations taken from the current state.
     """
     
     params_file = sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx'
-    
-    central_params = pd.read_excel(params_file, sheet_name='Central')
-    nucleotide_params = pd.read_excel(params_file, sheet_name='Nucleotide')
-    lipid_params = pd.read_excel(params_file, sheet_name='Lipid')
-    cofactor_params = pd.read_excel(params_file, sheet_name='Cofactor')
-    transport_params = pd.read_excel(params_file, sheet_name='Transport')
-    
-    metabolism_params = pd.concat([central_params, nucleotide_params, lipid_params, cofactor_params, transport_params], ignore_index=True) 
-    
-    reaction_list = []
-
-    for row, item in metabolism_params.iterrows():
-        if item['Reaction Name'] not in reaction_list:
-            reaction_list.append(item['Reaction Name'])
-            
     sbmlFile = sim_properties['head_directory'] + "input_data/Syn3A_updated.xml"
 
-    docSBML = libsbml.readSBMLFromFile(sbmlFile)
-    modelSBML = docSBML.getModel()
+    for (rxnID, substrates_list, substrates_stoich, products_list, products_stoich, rateLaw, kcatF, kcatR,
+         sub_KMs, prod_KMs, rxn_params) in _random_binding_static(params_file, sbmlFile):
 
-    speciesNames = [spc.name for spc in modelSBML.getListOfSpecies()]
-    speciesNamesLower = [x.lower() for x in speciesNames]
-    speciesIDs = [spc.id for spc in modelSBML.getListOfSpecies()]
-
-    rxnNamesSBML = [ x.name for x in modelSBML.getListOfReactions()]
-    
-    for rxnID in reaction_list:
-
-        rxn_info = getSpecIDs(rxnID, modelSBML, rxnNamesSBML)
-
-        rxn_params = metabolism_params.loc[ metabolism_params["Reaction Name"] == rxnID ]
-
-        substrates_list = rxn_info[0][0]
-        substrates_stoich = rxn_info[0][1]
-        products_list = rxn_info[1][0]
-        products_stoich = rxn_info[1][1]
-        
-        substrate_count = int(-np.sum(substrates_stoich))
-        product_count = int(np.sum(products_stoich))
-        
-        
-        rateLaw = Enzymatic(substrate_count, product_count)
-        
-        
         rateName = rxnID+'_rate'
         
         model.addRateForm(rateName, odecell.modelbuilder.RateForm(rateLaw))
 
         rxnIndx = model.addReaction(rxnID, rateName, rxnName="Reaction " + rxnID)
 
-        kcatF = rxn_params.loc[ rxn_params["Parameter Type"] == "Substrate Catalytic Rate Constant" ]["Value"].values[0]
-        kcatR = rxn_params.loc[ rxn_params["Parameter Type"] == "Product Catalytic Rate Constant" ]["Value"].values[0]
-        
         model.addParameter(rxnIndx, 'kcatF', kcatF)
         model.addParameter(rxnIndx, 'kcatR', kcatR)
 
-
-        rxn_KMs = rxn_params.loc[ rxn_params["Parameter Type"] == "Michaelis Menten Constant" ]
-    
         # Add substrates to the reaction
         sub_rxn_indx_counter = 0
         for i in range(len(substrates_list)):
 
             metID = substrates_list[i]
             
-            if metID not in list(model.getMetDict().keys()):
+            if metID not in model.getMetDict():
             
                 if metID.endswith('_e'):
                     
@@ -247,7 +320,7 @@ def defineRandomBindingRxns(model, sim_properties):
 
             stoichiometry = int(-substrates_stoich[i])
             
-            met_KM = rxn_KMs.loc[ rxn_KMs["Related Species"] == metID ]["Value"].values[0]
+            met_KM = sub_KMs[i]
             
             for j in range(stoichiometry):
                 
@@ -276,8 +349,8 @@ def defineRandomBindingRxns(model, sim_properties):
         for i in range(len(products_list)):
 
             metID = products_list[i]
-            
-            if metID not in list(model.getMetDict().keys()):
+
+            if metID not in model.getMetDict():
                 
                 if metID.endswith('_e'):
                     
@@ -291,7 +364,7 @@ def defineRandomBindingRxns(model, sim_properties):
 
             stoichiometry = int(products_stoich[i])
 
-            met_KM = rxn_KMs.loc[ rxn_KMs["Related Species"] == metID ]["Value"].values[0]
+            met_KM = prod_KMs[i]
             
             for j in range(stoichiometry):
                 
@@ -339,7 +412,7 @@ def defineOtherRandomBindingReactions(model, sim_properties):
     
     params_file = sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx'
     
-    RXNS_params = pd.read_excel(params_file, sheet_name='Other-Random-Binding')
+    RXNS_params = _read_excel_cached(params_file, sheet_name='Other-Random-Binding')
     
     reaction_list = []
 
@@ -348,14 +421,16 @@ def defineOtherRandomBindingReactions(model, sim_properties):
             reaction_list.append(item['Reaction Name'])
 #             print(item['Reaction Name'])
             
+    rows_for = _rows_by(RXNS_params, "Reaction Name")
+
     for rxnID in reaction_list:
     
 #         print(rxnID)
 
-        rxn_params = RXNS_params.loc[ RXNS_params["Reaction Name"] == rxnID ]
+        rxn_params = rows_for(rxnID)
         
-        substrate_count = int(rxn_params.loc[ rxn_params["Parameter Type"] == "Substrates" ]["Value"].values[0])
-        product_count = int(rxn_params.loc[ rxn_params["Parameter Type"] == "Products" ]["Value"].values[0])
+        substrate_count = int(_first(rxn_params, "Parameter Type", "Substrates"))
+        product_count = int(_first(rxn_params, "Parameter Type", "Products"))
         
         rateLaw = Enzymatic(substrate_count, product_count)
         
@@ -365,8 +440,8 @@ def defineOtherRandomBindingReactions(model, sim_properties):
 
         rxnIndx = model.addReaction(rxnID, rateName, rxnName="Reaction " + rxnID)
 
-        kcatF = rxn_params.loc[ rxn_params["Parameter Type"] == "Substrate Catalytic Rate Constant" ]["Value"].values[0]
-        kcatR = rxn_params.loc[ rxn_params["Parameter Type"] == "Product Catalytic Rate Constant" ]["Value"].values[0]
+        kcatF = _first(rxn_params, "Parameter Type", "Substrate Catalytic Rate Constant")
+        kcatR = _first(rxn_params, "Parameter Type", "Product Catalytic Rate Constant")
         
         model.addParameter(rxnIndx, 'kcatF', kcatF)
         model.addParameter(rxnIndx, 'kcatR', kcatR)
@@ -379,11 +454,11 @@ def defineOtherRandomBindingReactions(model, sim_properties):
         
         for i in range(1, substrate_count+1):
 
-            metID = rxn_params.loc[ rxn_params["Parameter Type"] == "Sub" + str(i) ]["Value"].values[0]
+            metID = _first(rxn_params, "Parameter Type", "Sub" + str(i))
             
 #             if spcID.endswith("_e"):
             
-            if metID not in list(model.getMetDict().keys()):
+            if metID not in model.getMetDict():
             
                 if metID.endswith('_e'):
                     
@@ -399,7 +474,7 @@ def defineOtherRandomBindingReactions(model, sim_properties):
 
             stoichiometry = int(1)
             
-            met_KM = rxn_KMs.loc[ rxn_KMs["Related Species"] == metID ]["Value"].values[0]
+            met_KM = _first(rxn_KMs, "Related Species", metID)
             
 #             for j in range(stoichiometry):
                 
@@ -426,11 +501,11 @@ def defineOtherRandomBindingReactions(model, sim_properties):
 
         for i in range(1, product_count+1):
 
-            metID = rxn_params.loc[ rxn_params["Parameter Type"] == "Prod" + str(i) ]["Value"].values[0]
+            metID = _first(rxn_params, "Parameter Type", "Prod" + str(i))
             
 #             if spcID.endswith("_e"):
             
-            if metID not in list(model.getMetDict().keys()):
+            if metID not in model.getMetDict():
             
                 if metID.endswith('_e'):
                     
@@ -446,7 +521,7 @@ def defineOtherRandomBindingReactions(model, sim_properties):
 
             stoichiometry = int(1)
             
-            met_KM = rxn_KMs.loc[ rxn_KMs["Related Species"] == metID ]["Value"].values[0]
+            met_KM = _first(rxn_KMs, "Related Species", metID)
             
 #             for j in range(stoichiometry):
                 
@@ -473,7 +548,7 @@ def defineOtherRandomBindingReactions(model, sim_properties):
             
         EnzymeConc = getEnzymeConc(rxn_params, sim_properties)
             
-#         EnzymeConc = partTomM(rxn_params.loc[ rxn_params["Parameter Type"] == "Eff Enzyme Count" ]["Value"].values[0], sim_properties)
+#         EnzymeConc = partTomM(_first(rxn_params, "Parameter Type", "Eff Enzyme Count"), sim_properties)
         
         model.addParameter(rxnIndx, "Enzyme", EnzymeConc)
         
@@ -496,7 +571,7 @@ def defineNonRandomBindingRxns(model, sim_properties):
     
     params_file = sim_properties['head_directory'] + 'input_data/kinetic_params.xlsx'
     
-    RXNS_params = pd.read_excel(params_file, sheet_name='Non-Random-Binding Reactions')
+    RXNS_params = _read_excel_cached(params_file, sheet_name='Non-Random-Binding Reactions')
     
     reaction_list = []
 
@@ -505,13 +580,15 @@ def defineNonRandomBindingRxns(model, sim_properties):
             reaction_list.append(item['Reaction Name'])
 #             print(item['Reaction Name'])
             
+    rows_for = _rows_by(RXNS_params, "Reaction Name")
+
     for rxnID in reaction_list:
     
 #         print(rxnID)
 
-        rxn_params = RXNS_params.loc[ RXNS_params["Reaction Name"] == rxnID ]
+        rxn_params = rows_for(rxnID)
         
-        rateLaw = str(rxn_params.loc[ rxn_params["Parameter Type"] == "Kinetic Law" ]["Value"].values[0])
+        rateLaw = str(_first(rxn_params, "Parameter Type", "Kinetic Law"))
         
         rateName = rxnID+'_rate'
         
@@ -529,7 +606,7 @@ def defineNonRandomBindingRxns(model, sim_properties):
                     
                     metID = row['Value']
                     
-                    if metID not in list(model.getMetDict().keys()):
+                    if metID not in model.getMetDict():
             
                         if metID.endswith('_e'):
 
@@ -555,7 +632,7 @@ def defineNonRandomBindingRxns(model, sim_properties):
                     
                     metID = row['Value']
                     
-                    if metID not in list(model.getMetDict().keys()):
+                    if metID not in model.getMetDict():
             
                         if metID.endswith('_e'):
 
@@ -598,7 +675,7 @@ def addProteinMetabolites(model, sim_properties):
     
     data_file = sim_properties['head_directory'] + 'input_data/protein_metabolites.xlsx'
     
-    ptnMets = pd.read_excel(data_file, sheet_name='protein metabolites')
+    ptnMets = _read_excel_cached(data_file, sheet_name='protein metabolites')
     
     for index, row in ptnMets.iterrows():
         
@@ -683,7 +760,7 @@ def getEnzymeConc(rxn_params, sim_properties):
     Description:
     """
     
-    EnzymeStr = rxn_params.loc[ rxn_params["Parameter Type"] == "Eff Enzyme Count" ]["Value"].values[0]
+    EnzymeStr = _first(rxn_params, "Parameter Type", "Eff Enzyme Count")
     
     Enzymes = EnzymeStr.split('-')
 #     print(Enzymes)
@@ -709,7 +786,7 @@ def getEnzymeConc(rxn_params, sim_properties):
     
     else:
         
-        GPRrule = rxn_params.loc[ rxn_params["Parameter Type"] == "GPR rule" ]["Value"].values[0]
+        GPRrule = _first(rxn_params, "Parameter Type", "GPR rule")
 
         if GPRrule == 'or':
             
