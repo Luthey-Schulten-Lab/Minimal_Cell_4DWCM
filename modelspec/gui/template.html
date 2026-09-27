@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JCVI-Syn3A 4DWCM</title>
+<!--KATEX-->
+<style>
+/*STYLE*/
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>JCVI-Syn3A 4DWCM</h1>
+      <div class="meta" id="meta"></div>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <div class="controls">
+    <label class="switch" title="Show source files, spreadsheet rows and code references">
+      <input type="checkbox" id="dev"><span class="track"><span class="knob"></span></span><span>Developer</span>
+    </label>
+    <button class="ghost" id="theme" title="Toggle light / dark">◐</button>
+  </div>
+</header>
+<main class="layout">
+  <aside class="list" id="list-pane">
+    <div class="search"><input id="q" type="search" placeholder="Search id, gene, name, product…" autocomplete="off"></div>
+    <div class="filters" id="filters"></div>
+    <div class="count" id="count"></div>
+    <ul id="list" class="rows"></ul>
+  </aside>
+  <div class="splitter" id="split-list" role="separator" aria-orientation="vertical" aria-controls="list-pane" aria-label="Resize the list" tabindex="0" title="Drag to resize · double-click to reset"></div>
+  <section class="detail" id="detail" tabindex="-1"></section>
+  <div class="splitter" id="split-cart" role="separator" aria-orientation="vertical" aria-controls="cart" aria-label="Resize the perturbation panel" tabindex="0" title="Drag to resize · double-click to reset"></div>
+  <aside class="cart" id="cart"></aside>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="application/json" id="spec">/*SPEC*/</script>
+<script>
+/*APP*/
+</script>
+</body>
+</html>

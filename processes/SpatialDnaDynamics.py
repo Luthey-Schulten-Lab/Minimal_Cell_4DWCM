@@ -476,7 +476,7 @@ def _num_smc(sim_properties):
     """
     bound_fraction = float(sim_properties.get('dna_smc_bound_fraction', 1.0))
     n_complexes = sim_properties['counts']['P_0415'] / 2.0
-    return max(1, int(n_complexes * bound_fraction))
+    return max(int(sim_properties.get('smc_min', 1)), int(n_complexes * bound_fraction))   # smc_min = 0 only for an SMC knockout
 
 
 def _write_loop_params_file(sim_properties, num_smc):

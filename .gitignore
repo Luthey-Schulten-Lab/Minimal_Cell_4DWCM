@@ -20,3 +20,6 @@ docker/*.log
 
 # jLM pyximport build output (created when the model is imported)
 pyxbld/
+
+# modelspec build output (python -m modelspec build)
+modelspec/out/

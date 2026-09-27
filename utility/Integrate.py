@@ -13,6 +13,7 @@ from pycvodes import integrate_predefined
 from pycvodes import integrate_adaptive
 from scipy import integrate
 import odecell
+import os
 import numpy as np
 
 
@@ -131,6 +132,41 @@ def _typed_ode_build_call(builder, **kw):
         else: del _osol.open
 
 
+# odecell writes the generated ODE code to ./cythonCompiledFunctions.pyx, compiles it under ./pyxbld (pyximport's build dir,
+# fixed when odecell.solver is imported) and imports it from the current directory. The rate constants are compiled in, so
+# runs with different parameters that share a working tree can load each other's model. A perturbed run sets
+# ODE_BUILD_DIR (modelspec.apply) to build in its own directory; None = the original behaviour.
+ODE_BUILD_DIR = None
+
+
+def _private_build(call):
+    import sys as _sys
+    d = ODE_BUILD_DIR
+    os.makedirs(d + '/pyxbld', exist_ok=True)
+    importers = [i for i in _sys.meta_path if type(i).__name__ == 'PyxImporter']
+    prev_dirs = [i.pyxbuild_dir for i in importers]
+    prev_cwd = os.getcwd()
+    # the script's own directory (sys.path[0]) would otherwise win the import over the freshly built module
+    _sys.modules.pop('cythonCompiledFunctions', None)
+    _sys.path.insert(0, d)
+    try:
+        for i in importers:
+            i.pyxbuild_dir = d + '/pyxbld'
+        os.chdir(d)
+        out = call()
+        mod = _sys.modules.get('cythonCompiledFunctions')
+        where = os.path.dirname(os.path.abspath(getattr(mod, '__file__', '') or '.'))
+        if mod is None or not (where + '/').startswith(os.path.abspath(d) + '/'):
+            raise RuntimeError('ODE build: cythonCompiledFunctions loaded from %s, expected the private build dir %s' % (where, d))
+        return out
+    finally:
+        os.chdir(prev_cwd)
+        if _sys.path and _sys.path[0] == d:
+            _sys.path.pop(0)
+        for i, b in zip(importers, prev_dirs):
+            i.pyxbuild_dir = b
+
+
 #########################################################################################
 def setSolverCached(model, cache):
     """
@@ -150,8 +186,8 @@ def setSolverCached(model, cache):
     if cache.get('builder') is None or cache.get('sig') != sig:
         builder = odecell.solver.ModelSolver(model)
         builder.prepareFunctor()
-        _typed_ode_build_call(builder, odeint=False, useJac=False, cythonBuild=True,
-                           functor=True, verbose=0)
+        build = lambda: _typed_ode_build_call(builder, odeint=False, useJac=False, cythonBuild=True, functor=True, verbose=0)
+        _private_build(build) if ODE_BUILD_DIR else build()
         cache['builder'] = builder
         cache['sig'] = sig
 

@@ -1,0 +1,23 @@
+# 4DWCM perturbation, modelspec schema 1. Check with: python -m modelspec check <this file>
+schema: 1
+name: "q_consts"
+description: "no glucose in the medium, ribosome binding x0.1, dnaA knocked down x0.25, riboKcat 12 -> 6"
+knockouts: []
+knockdowns:
+  - gene: "JCVISYN3A_0001"
+    promoter_scale: 0.25
+reaction_parameters: []
+disabled_reactions: []
+rdme_rate_constants:
+  - constant: "ribo_bind"
+    scale: 0.1
+gene_rate_scales: []
+diffusion_scales: []
+gip_constants:
+  - constant: "riboKcat"
+    value: 6
+initial_protein_counts: {}
+initial_mrna_means: {}
+initial_metabolites_mM: {}
+medium_mM:
+  M_glc__D_e: 0.0

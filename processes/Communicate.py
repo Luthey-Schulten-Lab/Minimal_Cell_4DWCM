@@ -171,6 +171,10 @@ def updateCountsODE(sim_properties, odeResults, model):
         
             sim_properties['counts'][mL[ind].getID()] = mMtoPart(resFinal[ind],sim_properties) # Assign updated species counts to particle map using species IDs
     
+    for specieName in sim_properties.get('ko_zero_species', ()):   # ODE forms of a knocked-out carrier protein: no 1-particle floor
+        if specieName in sim_properties['counts']:
+            sim_properties['counts'][specieName] = 0
+
     return None
 #########################################################################################
 

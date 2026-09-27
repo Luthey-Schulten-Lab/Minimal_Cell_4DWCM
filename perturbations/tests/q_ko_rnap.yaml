@@ -1,0 +1,18 @@
+# 4DWCM perturbation, modelspec schema 1. Check with: python -m modelspec check <this file>
+schema: 1
+name: "q_ko_rnap"
+description: "rpoA (RNAP alpha) knocked out: no RNA polymerase can be assembled"
+knockouts:
+  - gene: "JCVISYN3A_0645"
+    mode: "full"
+knockdowns: []
+reaction_parameters: []
+disabled_reactions: []
+rdme_rate_constants: []
+gene_rate_scales: []
+diffusion_scales: []
+gip_constants: []
+initial_protein_counts: {}
+initial_mrna_means: {}
+initial_metabolites_mM: {}
+medium_mM: {}

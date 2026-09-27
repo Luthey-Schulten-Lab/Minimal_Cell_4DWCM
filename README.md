@@ -15,7 +15,14 @@ and host-side bookkeeping).
 Typical full-cycle cost ($7200\,\mathrm{s}$ biological time):
 
 - Unoptimized reference: multi-day (published A100) / ~79 h (NVIDIA B200 baseline)
-- This branch (production): approximately **27 hours** on 2 NVIDIA B200 GPUs
+- This branch: about **2 hours** on 2 NVIDIA B200 GPUs (**2.05 h** measured for a full cycle), with the companion
+  Lattice Microbes and `btree_chromo` speed changes (see
+  [Further wall-clock and output-size reductions](#further-wall-clock-and-output-size-reductions)). Those changes are
+  required: with the published Lattice Microbes this branch stops at the second hook. For comparison, the `modularize`
+  production code with the published components takes ~23–27 h
+- The model browser [`4DWCM-GUI.html`](4DWCM-GUI.html) builds in silico perturbations (knockouts, knockdowns,
+  initial conditions, medium, rate constants) that the simulator applies with `-p`; see
+  [In silico perturbations](#in-silico-perturbations-with-the-model-browser-4dwcm-guihtml)
 - On this branch, chromosome dynamics follow the SMC-mediated segregation framework
 of Maytin *et al.* (*Protein Science*, 2026): SMC loops persist across DNA hooks
 (dwell time ≫ $4\,\mathrm{s}$ coupling interval). **Partitioning is driven by
@@ -107,6 +114,66 @@ Restart with `Restart_Whole_Cell_Minimal_Cell.py` using the same `-od` (and
 `-t` = **additional** biological seconds to run).
 
 Trajectory and intermediate files are written under `Data/`.
+
+| Flag | Meaning |
+|------|---------|
+| `-p` / `--perturb` | Perturbation file (YAML) to apply: knockouts, knockdowns, initial counts, medium, rate constants. See below. |
+
+---
+
+## In silico perturbations with the model browser (`4DWCM-GUI.html`)
+
+`4DWCM-GUI.html` in the repo root is a self-contained page (no server, no network) listing every gene, RNA, protein,
+metabolite, reaction, process and constant of the model, with their parameters, initial conditions and roles. It also
+builds perturbation files. Open it in any browser, on any machine.
+
+**Example: knock out pdhC and disable PGI.**
+
+1. Open `4DWCM-GUI.html`. In **Genes**, search `pdhC` (or `0227`), open it and press **Knock out**. The ⓘ next to
+   the mode explains *full*, *expression only* and *initial only*; keep **Full knockout**.
+2. In **Reactions**, open `PGI` (Glucose-6-phosphate isomerase) and press **Disable reaction**.
+3. The **Perturbation** panel on the right now lists both edits, the static impact (PDH_acald and PGI blocked) and
+   the YAML. Name it, e.g. `ko_pdhc_pgi`, and press **Download .yaml**.
+4. Save the file in the repo as `perturbations/ko_pdhc_pgi.yaml` and check it:
+
+   ```bash
+   python3 -m modelspec check perturbations/ko_pdhc_pgi.yaml
+   ```
+
+   It lists each edit (old → new value and the simulator function it goes through), or the errors.
+
+5. Run it. Directly, add `-p` to the command above:
+
+   ```bash
+   python Whole_Cell_Minimal_Cell.py -od ko_pdhc_pgi -t 60 -cd 0 -drs 1 -dsd /Software/ -p perturbations/ko_pdhc_pgi.yaml
+   ```
+
+   On the Slurm node, `slurm/submit_run.sh` runs it from a private snapshot of the working tree, so nothing lands in
+   the repo, and puts the run under `/raid/racda/4dwcm_tests/<batch>/<name>/`:
+
+   ```bash
+   slurm/submit_run.sh -b my_batch -n ko_pdhc_pgi -t 60 -g 2,3 -p perturbations/ko_pdhc_pgi.yaml
+   ```
+
+6. The run directory gets `perturbation_applied.json` (each edit read back from the simulation, with pass/fail) and a
+   copy of the YAML. Compare short runs side by side with
+
+   ```bash
+   python3 -m modelspec.compare_runs /raid/racda/4dwcm_tests/my_batch/q_base /raid/racda/4dwcm_tests/my_batch/ko_pdhc_pgi
+   ```
+
+To save straight into `perturbations/` instead of downloading, serve the page with `python3 -m modelspec serve` and open
+`http://localhost:8765` (from a laptop: `ssh -L 8765:localhost:8765 <node>`). **Developer** mode (top right) adds the
+source file and line behind every species, reaction and constant. After changing `input_data/` or the simulator
+source, rebuild the page in the container:
+
+```bash
+docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v $PWD:$PWD -w $PWD --entrypoint python 4d-cell-numba:latest -m modelspec build
+```
+
+The perturbation file can also knock down genes, set initial protein, mRNA and metabolite amounts, change the medium,
+scale or set any kinetic parameter, RDME rate constant, per-gene rate, diffusion coefficient or GIP rate-formula
+constant, and disable reactions. Details: [modelspec/README.md](modelspec/README.md).
 
 ---
 

@@ -34,8 +34,11 @@ ap.add_argument("-mh", "--maximumHours", type=float, default=None)
 
 ap.add_argument("-DNA", "--DNADynamics", default='BD') # chromosome algorithm: BD (Brownian dynamics in LAMMPS) or lattice (Python surrogate)
 ap.add_argument("-MB", "--Metabolism", default='ODE') # metabolism algorithm: ODE (integrate the network) or skip (hold concentrations fixed)
+ap.add_argument("-p", "--perturb", default=None) # perturbation YAML (modelspec schema); omitted = the unperturbed model
 
 args = ap.parse_args()
+PERTURB_FILE = args.perturb          # kept off args so sim_args.txt of an unperturbed run is unchanged
+del args.perturb
 #########################################################################################
 
 
@@ -98,9 +101,18 @@ sim_properties['division_started'] = False
 
 sim_properties['profile_ribosomes'] = True
 
+PERTURB = None
+if PERTURB_FILE:                     # knockouts / parameter edits from a modelspec perturbation file
+    from modelspec.apply import Perturbation
+    PERTURB = Perturbation.from_file(PERTURB_FILE, headDirectory)
+    PERTURB.install(sim, sim_properties)
+
 region_dict, ribo_site_dict = InitGeom.buildRegions(sim, sim_properties)
 
 IC.initializeParticles(sim, region_dict, sim_properties)
+
+if PERTURB is not None:
+    PERTURB.after_particles(sim, sim_properties)
 
 MCRDME.createParticleIdxMap(sim, sim_properties)
 
@@ -132,6 +144,9 @@ termination_time = args.maximumHours
 
 Solver = makeSolver(IntMpdRdmeSolver, mc4dSolver)
 solver = Solver(sim, sim_properties, region_dict, ribo_site_dict, termination_time=termination_time)
+
+if PERTURB is not None:
+    PERTURB.report(sim, sim_properties)
 
 sim.finalize()
 

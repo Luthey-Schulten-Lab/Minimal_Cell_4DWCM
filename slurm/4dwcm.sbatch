@@ -36,6 +36,7 @@ MEMBRANE="${MEMBRANE:-1}"
 DATA_ROOT="${DATA_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}/runs}"
 MOUNT_REPO="${MOUNT_REPO:-0}"     # 1 = use the working tree instead of baked-in code
 RESTART="${RESTART:-0}"           # 1 = resume an existing run via the Restart script
+PERTURB="${PERTURB:-}"            # perturbation YAML, path inside the repo (e.g. perturbations/ko_0415.yaml); needs MOUNT_REPO=1
 
 # Path to a btree_chromo checkout to run instead of the one baked into the
 # image, for trying a build without republishing the image. BTREE_BUILD_DIR
@@ -43,6 +44,10 @@ RESTART="${RESTART:-0}"           # 1 = resume an existing run via the Restart s
 # overridden per-config (build_fused, build_asan).
 BTREE_REPO="${BTREE_REPO:-}"
 BTREE_BUILD_DIR="${BTREE_BUILD_DIR:-build}"
+# A Lattice Microbes build directory (pylm/jLM + liblm) to use instead of the LM baked into the image. The optimized
+# wcm-speed Python needs the matching LM (e.g. the ERA lm_fuse_138 build of era-wcm-lm b3c742e); the image's public LM
+# lacks the device-side lattice reads and the run dies at the second hook with "Unknown exception during execution".
+LM_BUILD="${LM_BUILD:-}"
 
 # SLURM copies this script into its spool dir, so BASH_SOURCE does NOT point at
 # the repo. Prefer REPO exported by submit.sh, then the submit directory, and
@@ -237,6 +242,10 @@ if [[ -n "${BTREE_REPO}" ]]; then
   fi
   MOUNTS+=(-v "${BTREE_REPO}:/Software/btree_chromo:ro")
 fi
+if [[ -n "${LM_BUILD}" ]]; then
+  [[ -d "${LM_BUILD}" ]] || { echo "ERROR: LM_BUILD=${LM_BUILD} is not a directory." >&2; exit 1; }
+  MOUNTS+=(-v "${LM_BUILD}:/bld:ro" -e PYTHONPATH=/bld)
+fi
 
 CMD=(python "${SCRIPT}"
      -od "${OUTDIR}"
@@ -246,6 +255,11 @@ CMD=(python "${SCRIPT}"
      -m "${MEMBRANE}"
      -dsd /Software/
      "${MH_ARG[@]}")
+if [[ -n "${PERTURB}" ]]; then
+  [[ "${RESTART}" == "1" ]] && { echo "ERROR: PERTURB is not wired into the restart path yet." >&2; exit 1; }
+  [[ -f "${REPO}/${PERTURB}" ]] || { echo "ERROR: PERTURB=${PERTURB} not found under ${REPO}." >&2; exit 1; }
+  CMD+=(-p "/src/4d/${PERTURB}")
+fi
 [[ -n "${LM_CPU_CORES:-}" ]] && CMD=(taskset -c "${LM_CPU_CORES}" "${CMD[@]}")
 
 echo "=== 4DWCM run ==============================================="
